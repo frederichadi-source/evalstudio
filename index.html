@@ -807,24 +807,20 @@
   }
   .module-resize-handle.resize-corner:hover,
   .module-resize-handle.resize-corner.resizing { background: rgba(43, 108, 176, 0.35); }
-  /* Repères visuels persistants (pas seulement au survol) pour que chaque
-     poignée de redimensionnement soit visible dès le premier coup d'oeil --
-     avant, ces zones étaient volontairement invisibles (juste un curseur au
-     survol), ce qui les rendait indétectables pour un nouvel utilisateur. */
-  .module-resize-handle.resize-right::after,
-  .module-resize-handle.resize-top::after,
-  .module-resize-handle.resize-bottom::after {
-    content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    background: rgba(43, 108, 176, 0.4); border-radius: 2px; pointer-events: none;
-  }
-  .module-resize-handle.resize-right::after { width: 3px; height: 16px; }
-  .module-resize-handle.resize-top::after,
-  .module-resize-handle.resize-bottom::after { width: 16px; height: 3px; }
-  .module-resize-handle.resize-corner::after {
-    content: ''; position: absolute; inset: 2px; border-radius: 1px;
-    background: rgba(43, 108, 176, 0.4); pointer-events: none;
-  }
-  .module-resize-handle:hover::after { background: rgba(43, 108, 176, 0.8); }
+
+  /* Le Logo a sa propre interaction de redimensionnement (8 zones tout
+     autour de la boîte, comportement inspiré du Cercle de Note -- voir
+     logoResizeHandlesHTML()/startLogoBoxResize() plus bas). */
+  .logo-resize-handle.n { left: 0; top: -6px; width: 100%; height: 10px; cursor: ns-resize; }
+  .logo-resize-handle.s { left: 0; bottom: -6px; width: 100%; height: 10px; cursor: ns-resize; }
+  .logo-resize-handle.e { top: 0; right: -6px; width: 10px; height: 100%; cursor: ew-resize; }
+  .logo-resize-handle.w { top: 0; left: -6px; width: 10px; height: 100%; cursor: ew-resize; }
+  .logo-resize-handle.ne { top: -6px; right: -6px; width: 12px; height: 12px; cursor: nesw-resize; border-radius: 2px; }
+  .logo-resize-handle.nw { top: -6px; left: -6px; width: 12px; height: 12px; cursor: nwse-resize; border-radius: 2px; }
+  .logo-resize-handle.se { bottom: -6px; right: -6px; width: 12px; height: 12px; cursor: nwse-resize; border-radius: 2px; }
+  .logo-resize-handle.sw { bottom: -6px; left: -6px; width: 12px; height: 12px; cursor: nesw-resize; border-radius: 2px; }
+  .logo-resize-handle:hover,
+  .logo-resize-handle.resizing { background: rgba(43, 108, 176, 0.3); }
 
   /* Grand cercle pour la note globale -- module d'en-tête indépendant
      (mod-grade), voir la remarque ci-dessus. */
@@ -1584,7 +1580,7 @@
           <input type="file" id="cfg-logo-input" accept="image/*" style="display:none;" onchange="loadLogo(event)">
         </div>
         <div class="control-group">
-          <label style="color:#718096; font-size:12px;">Glissez le coin du logo dans l'aperçu pour changer sa taille.</label>
+          <label style="color:#718096; font-size:12px;">Glissez le bord du logo dans l'aperçu pour changer sa taille.</label>
         </div>
       </div>
     </div>
@@ -1717,6 +1713,13 @@
             Aperçu : 2 pages côte à côte
           </label>
         </div>
+        <div class="control-group">
+          <label title="Réduit la taille d'AFFICHAGE de l'aperçu (écran uniquement, sans aucun effet sur l'impression ni l'export PDF) pour voir plusieurs pages d'un coup d'œil -- particulièrement utile avec « 2 pages côte à côte ».">
+            Zoom de l'aperçu :
+            <input type="range" id="cfg-preview-zoom" min="30" max="100" step="5" value="100" oninput="setPreviewZoom(this.value)" style="vertical-align:middle; width:100px;">
+            <span id="preview-zoom-value" style="font-size:11px; color:#4a5568;">100 %</span>
+          </label>
+        </div>
         <div class="control-group expert-only">
           <label>Taille du texte de l'examen</label>
           <select id="cfg-font-size" onchange="updateFontSize(this.value)">
@@ -1728,19 +1731,34 @@
     </div>
 
     <!-- BOUTON IMPRIMER -->
-    <button style="width: 100%; padding: 12px; background: #2b6cb0; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 15px;" onclick="printExam()">
+    <button style="width: 100%; padding: 12px; background: #2b6cb0; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 10px;" onclick="printExam()">
       🖨️ Imprimer / Exporter PDF
     </button>
-    <!-- [stated] a signalé une page vide en trop + l'URL/la date imprimées
-         sur l'examen : confirmé qu'il s'agit des en-têtes/pieds de page que
-         le NAVIGATEUR ajoute lui-même par défaut (hors du contrôle de cette
-         page -- aucune CSS ne peut les désactiver), qui grugent en plus un
-         peu de hauteur réelle de page non prévue par notre calcul, au point
-         de faire parfois déborder un document qui tenait pourtant tout
-         juste sur une page. Bandeau d'aide visible juste sous le bouton. -->
-    <p style="font-size: 11px; color: #718096; margin: -10px 0 15px 0; line-height: 1.4;">
-      💡 Dans la boîte d'impression, décochez « En-têtes et pieds de page » pour un résultat sans URL ni date, et pour éviter une éventuelle page vide en trop.
-    </p>
+    <!-- Historique de ce bandeau : (1) simple texte gris discret -- [stated]
+         l'a manqué ; (2) remplacé par une boîte de dialogue BLOQUANTE qui
+         gate window.open() derrière un second clic sur son bouton "Continuer"
+         -- « la page gèle » signalé, cause la plus probable identifiée :
+         window.open() semble mal se comporter dans le bac-à-sable de
+         l'artefact quand il est déclenché depuis un second clic sur un calque
+         superposé plutôt que directement depuis le clic sur le vrai bouton ;
+         (3) déplacée dans la fenêtre d'impression elle-même (toujours
+         gate-free au 1er clic) -- [stated] n'a pas aimé qu'une fenêtre
+         s'ouvre juste pour ça ; (4) reposée en calque sur la page (gate à
+         nouveau window.open() derrière "Continuer") pour respecter cette
+         demande -- **le gel est revenu, confirmant l'hypothèse (2)/(3)**.
+         Solution retenue ici, qui cumule les deux contraintes réelles
+         (aucune fenêtre pour l'alerte, ET window.open() jamais gaté derrière
+         un second clic) : ce bandeau redevient un simple avertissement
+         TOUJOURS VISIBLE (pas de calque, pas de bouton "Continuer", rien à
+         fermer) -- juste rendu impossible à manquer (couleur, icône, cadre)
+         au lieu du texte gris d'origine. printExam() rappelle directement
+         doPrintExam() dès le clic, exactement comme le schéma d'origine
+         (V26-V48) qui n'a jamais posé ce problème. -->
+    <div style="background:#fffbea; border:1px solid #f6c343; border-radius:6px; padding:10px 12px; margin-bottom:15px;">
+      <p style="font-size:12px; color:#7a5a00; margin:0; line-height:1.5;">
+        ⚠️ Le navigateur ajoute lui-même une adresse de site en bas de page et un titre + une date en haut de page (réglage du navigateur, pas d'Éval Studio). Dans la fenêtre d'impression, cliquez sur <strong>Plus de paramètres</strong> puis décochez <strong>« En-têtes et pieds de page »</strong> avant d'imprimer/enregistrer en PDF.
+      </p>
+    </div>
 
     <!-- VOLET 6 : Importer / Exporter des questions (Excel) -->
     <div class="accordion-item">
@@ -1791,6 +1809,21 @@
           </button>
           <input type="file" id="import-file" accept=".json" style="display: none;" onchange="importSettings(event)">
         </div>
+      </div>
+    </div>
+
+    <!-- [stated] : "en bas de la colonne de gauche, ajouter les copyrights,
+         avec le favicon, et le nom Éval Studio (v1.3.1) et à côté :
+         Copyright © 2026 Frédéric Hadi. Tous droits réservés." -- ici, le
+         favicon est référencé en fichier externe (assets/favicon-32.png,
+         déjà présent dans ce paquet), contrairement à l'Artifact (voir
+         atelier-examens.html) qui l'embarque en data-URI faute de dossier
+         assets/. ui-only comme le reste de la sidebar (jamais imprimé). -->
+    <div class="ui-only" style="display:flex; align-items:center; gap:8px; padding:12px 4px 4px 4px; margin-top:8px; border-top:1px solid #e2e8f0;">
+      <img src="assets/favicon-32.png" alt="" width="24" height="24" style="border-radius:4px; flex-shrink:0;">
+      <div style="line-height:1.3;">
+        <div style="font-size:12px; color:#2d3748; font-weight:600;">Éval Studio <span style="font-size:10px; color:#a0aec0; font-weight:400;">(v1.3.1)</span></div>
+        <div style="font-size:10px; color:#a0aec0;">Copyright © 2026 Frédéric Hadi. Tous droits réservés.</div>
       </div>
     </div>
   </div>
@@ -1941,7 +1974,32 @@
   // correspondait alors plus du tout à l'écran, exactement le symptôme
   // signalé. On copie donc maintenant TOUS les <style> (pas seulement le
   // premier) ET l'attribut style inline de <html>.
+  // BUG CORRIGÉ (2026-09, [stated] : "je ne veux pas que l'adresse du site
+  // s'ajoute dans le bas de la page, ni le titre du site ou la date dans le
+  // haut de page") : ces en-têtes/pieds de page (URL, titre, date, "Page N")
+  // sont ajoutés par le NAVIGATEUR lui-même lors de l'impression -- un
+  // réglage qui vit dans la boîte de dialogue d'impression, PAS dans la
+  // page web. Aucune CSS ni JavaScript ne peut cocher/décocher cette case à
+  // la place de l'utilisateur (restriction volontaire de sécurité de tous
+  // les navigateurs, pour qu'une page ne puisse jamais modifier l'interface
+  // du navigateur lui-même) -- déjà confirmé par un essai réel avant cette
+  // version (voir le bandeau d'aide sous le bouton, resté en place). Comme
+  // [stated] a signalé être passé outre ce petit texte discret, on ajoute
+  // ici une VRAIE boîte de dialogue bloquante (impossible à manquer, doit
+  // être fermée pour continuer) qui explique le geste exact à faire dans
+  // CHROME (Plus de paramètres > décocher "En-têtes et pieds de page")
+  // avant d'ouvrir la fenêtre d'impression. Une case "Ne plus afficher..."
+  // (mémorisée seulement en mémoire JS, pour la durée de la session -- pas
+  // de stockage navigateur, voir la contrainte des artefacts) évite de la
+  // ré-afficher à chaque export une fois le geste intégré.
   function printExam() {
+    try {
+      doPrintExam();
+    } catch (e) {
+      showInlineNotice("L'ouverture de la fenêtre d'impression a échoué (" + (e && e.message ? e.message : 'erreur') + "). Réessayez, ou utilisez le fichier autonome téléchargé.", true);
+    }
+  }
+  function doPrintExam() {
     const styleEls = document.querySelectorAll('style');
     const paperEl = document.getElementById('paper');
     if (!styleEls.length || !paperEl) return;
@@ -1984,21 +2042,34 @@
     // exactement le contenu RÉELLEMENT présent à l'écran -- texte édité,
     // tableaux d'association, cases cochées, etc. -- déjà réparti sur les
     // vraies pages par calculatePageBreaks().
-    doc.body.appendChild(paperEl.cloneNode(true));
+    const clonedPaper = paperEl.cloneNode(true);
+    // BUG ÉVITÉ (zoom de l'aperçu, 2026-09) : le "Zoom de l'aperçu" (voir
+    // setPreviewZoom()) pose un style.zoom directement sur #paper, pour un
+    // confort d'ÉCRAN uniquement -- ce style INLINE serait sinon copié tel
+    // quel par ce cloneNode(true) et rétrécirait aussi le PDF/l'impression
+    // réelle si l'enseignant avait laissé l'aperçu dézoomé. On le retire
+    // explicitement sur le clone, jamais sur l'original (qui doit garder son
+    // zoom d'écran affiché tel quel après l'impression).
+    clonedPaper.style.zoom = '';
+    doc.body.appendChild(clonedPaper);
 
     // On attend que toute image (le logo) ait fini de charger DANS la
     // nouvelle fenêtre avant d'imprimer -- un data URL cloné doit être
     // redécodé par ce nouveau document, et imprimer un logo pas encore
     // chargé le ferait apparaître vide sur le PDF (voir BUG CORRIGÉ plus
     // haut sur le délai de décodage d'image, découvert en diagnostiquant le
-    // curseur de taille du logo).
+    // curseur de taille du logo). Filet de sécurité (2026-09, ajouté lors du
+    // diagnostic du gel) : si une image reste bloquée sans jamais déclencher
+    // onload/onerror, on imprime quand même après 4s plutôt que d'attendre
+    // indéfiniment.
     const images = Array.from(doc.images);
     const waitForImages = Promise.all(images.map((img) => {
       if (img.complete) return Promise.resolve();
       return new Promise((resolve) => { img.onload = img.onerror = resolve; });
     }));
+    const timeout = new Promise((resolve) => setTimeout(resolve, 4000));
 
-    waitForImages.then(() => {
+    Promise.race([waitForImages, timeout]).then(() => {
       printWindow.focus();
       printWindow.print();
     });
@@ -2024,6 +2095,49 @@
   // disposition change), donc rien à recalculer côté pagination.
   function toggleTwoPageView(enabled) {
     document.body.classList.toggle('two-page-view', enabled);
+  }
+
+  // [stated] : "je voudrais qu'on puisse réduire la taille de l'aperçu pour
+  // avoir une vue globale, surtout quand on affiche 2 pages" -- contrairement
+  // au mode "2 pages côte à côte" (qui ne touche à AUCUNE dimension pour ne
+  // jamais risquer la pagination, voir plus haut), ceci a justement besoin
+  // d'un VRAI rétrécissement visuel. On applique un CSS `zoom` (pas
+  // `transform: scale`, qui laisserait un vide occupé à la taille d'origine
+  // autour de la page rétrécie -- `zoom` réduit aussi l'espace RÉELLEMENT
+  // occupé dans la mise en page, ce qui est justement le but ici : voir
+  // plusieurs pages sans autant défiler) directement sur #paper (le
+  // conteneur de TOUTES les pages, jamais sur .paper-page individuellement).
+  // Comme pour le zoom de taille de texte (voir body.font-small plus haut),
+  // `getBoundingClientRect()` réfléchit la taille RENDUE (zoomée) alors que
+  // `offsetWidth/offsetHeight` restent LOGIQUES -- exactement le mécanisme
+  // dont dépend déjà calculatePageBreaks() pour son calcul de débordement
+  // (comparaison de deux rectangles RENDUS d'un côté, une capacité LOGIQUE
+  // de l'autre) : appliquer ce zoom PENDANT une mesure fausserait donc le
+  // calcul (un débordement réel de 40px logiques ne mesurerait plus que 20px
+  // rendus à 50% de zoom, contre une capacité inchangée). D'où
+  // suspendPreviewZoom()/restorePreviewZoom(), appelés autour de TOUT calcul
+  // de pagination (voir le wrapper de calculatePageBreaks() plus bas) : le
+  // zoom d'aperçu est donc TOUJOURS neutralisé pendant la mesure, puis
+  // réappliqué une fois la vraie pagination (à 100%, comme avant cette
+  // fonctionnalité) terminée -- aucune régression possible sur le calcul de
+  // pages, quel que soit le niveau de zoom d'aperçu choisi à l'écran.
+  let previewZoomPct = 100;
+  function applyPreviewZoom() {
+    const paperEl = document.getElementById('paper');
+    if (paperEl) paperEl.style.zoom = previewZoomPct === 100 ? '' : (previewZoomPct / 100);
+  }
+  function suspendPreviewZoom() {
+    const paperEl = document.getElementById('paper');
+    if (paperEl) paperEl.style.zoom = '';
+  }
+  function restorePreviewZoom() {
+    applyPreviewZoom();
+  }
+  function setPreviewZoom(pct) {
+    previewZoomPct = Math.max(30, Math.min(100, parseInt(pct, 10) || 100));
+    applyPreviewZoom();
+    const label = document.getElementById('preview-zoom-value');
+    if (label) label.textContent = previewZoomPct + ' %';
   }
 
   function toggleExpertMode(isExpert) {
@@ -2429,7 +2543,42 @@
 
     // L'en-tête (avec sa liste, encore vide à ce stade) est une unité de
     // haut niveau comme une autre pour son propre placement.
-    const headerPage = placeTopLevelUnit(sectionEl, state.curPage, state);
+    let headerPage = placeTopLevelUnit(sectionEl, state.curPage, state);
+
+    // BUG CORRIGÉ (2026-09, [stated] : "ne pas laisser un entête de section
+    // seul sur une page, sans question associé -- si ajouter une section
+    // avec une question s'étend sur 2 pages, alors garder l'entête de
+    // section et la première question ensemble") : placeTopLevelUnit()
+    // ci-dessus ne sait poser QUE l'en-tête lui-même (sa propre liste de
+    // questions est encore vide à ce stade) -- il pouvait donc parfaitement
+    // atterrir tout en bas d'une page, là où il tient tout juste seul, mais
+    // où la toute première question serait de toute façon systématiquement
+    // renvoyée sur un fragment "(suite)" de la page suivante (voir la boucle
+    // plus bas) : un en-tête de section orphelin, sans la moindre question
+    // sous lui. On teste donc ICI, avant de commencer à poser les questions,
+    // si la PREMIÈRE d'entre elles tiendrait à la suite de l'en-tête sur SA
+    // page actuelle ; si non -- et seulement si cette page contenait déjà
+    // autre chose avant l'en-tête (sinon le reculer d'une page ne changerait
+    // rien : un en-tête seul en haut d'une page déjà neuve, qui ne tient
+    // toujours pas avec sa première question, est un cas de contenu
+    // réellement surdimensionné, pas un orphelin évitable) -- on déplace
+    // l'en-tête ET on le laisse démarrer une page neuve, pour qu'il parte
+    // toujours accompagné d'au moins sa première question.
+    if (questionEls.length > 0) {
+      const headerContainer = state.containerFor(headerPage);
+      const hadOtherContentBeforeHeader = headerContainer.children.length > 1;
+      if (hadOtherContentBeforeHeader) {
+        const firstQ = questionEls[0];
+        questionsList.appendChild(firstQ);
+        const wouldOrphanHeader = state.overflows(headerPage, firstQ);
+        firstQ.remove();
+        if (wouldOrphanHeader) {
+          sectionEl.remove();
+          headerPage += 1;
+          state.containerFor(headerPage).appendChild(sectionEl);
+        }
+      }
+    }
 
     let activePage = headerPage;
     let activeList = questionsList;
@@ -2475,7 +2624,23 @@
     if (el) el.textContent = text;
   }
 
+  // Enveloppe autour du VRAI calcul de pagination (voir
+  // calculatePageBreaksInner() juste après) : neutralise le zoom d'aperçu
+  // (voir setPreviewZoom() plus haut) le temps de la mesure/pose réelle des
+  // pages, puis le réapplique systématiquement (y compris si une sortie
+  // anticipée ou une exception survient dans le calcul, via `finally`) --
+  // aucun des nombreux points de sortie internes de calculatePageBreaksInner()
+  // n'a donc besoin d'être touché individuellement.
   function calculatePageBreaks() {
+    suspendPreviewZoom();
+    try {
+      calculatePageBreaksInner();
+    } finally {
+      restorePreviewZoom();
+    }
+  }
+
+  function calculatePageBreaksInner() {
     const focusState = captureFocusState();
     // BUG CORRIGÉ : [stated] a signalé que la vue remontait tout en haut
     // chaque fois qu'on ajoutait une section, même en étant scrollé plus
@@ -3135,7 +3300,7 @@
             <div class="logo-resize-box" style="width:${logoBoxWidth}px; height:${logoBoxHeight}px; max-width:${logoMaxWidthPx(mod)}px;">
               <img src="${logoDataUrl}" alt="Logo" draggable="false">
             </div>
-            ${moduleResizeHandlesHTML(mod.id)}
+            ${logoResizeHandlesHTML()}
           `;
         } else {
           // PAS de stopPropagation ici (contrairement au bouton ✕ ou à un
@@ -3393,23 +3558,12 @@
   // basse) ou 'both' (poignée en coin).
   const MODULE_RESIZE_TARGET_SELECTOR = {
     'mod-student': '.student-fields',
-    'mod-grade': '.grade-circle-container',
-    'mod-logo': '.logo-resize-box',
   };
   const MODULE_MIN_WIDTH = { 'mod-student': 160, 'mod-grade': 70, 'mod-logo': 40 };
   const MODULE_MIN_HEIGHT = { 'mod-student': 50, 'mod-grade': 70, 'mod-logo': 24 };
 
   function moduleResizeHandlesHTML(modId) {
     if (!MODULE_RESIZE_TARGET_SELECTOR[modId]) return '';
-    // [stated] : le Cercle de Note n'a plus de poignée dédiée -- on
-    // redimensionne désormais en cliquant n'importe où sur son CONTOUR, et
-    // on le déplace en cliquant près de son CENTRE (voir
-    // startGradeCircleInteraction(), appelée directement par le mousedown de
-    // tout l'élément dans renderHeader()). Le redimensionnement lui-même est
-    // géré par startGradeCircleResize() (voir plus bas), PAS par
-    // startModuleResize()/onModuleResizeMove() (qui ne traitent donc plus du
-    // tout mod-grade).
-    if (modId === 'mod-grade') return '';
     return `
       <div class="module-resize-handle resize-top ui-only" title="Glisser pour agrandir vers le haut" onmousedown="event.stopPropagation(); startModuleResize(event, '${modId}', 'top');"></div>
       <div class="module-resize-handle resize-right ui-only" title="Glisser pour élargir" onmousedown="event.stopPropagation(); startModuleResize(event, '${modId}', 'width');"></div>
@@ -3453,9 +3607,6 @@
     if (!mod) return;
     const minW = MODULE_MIN_WIDTH[modId] || 60;
     const minH = MODULE_MIN_HEIGHT[modId] || 40;
-    // [stated] mod-grade ne passe plus jamais par ici -- voir
-    // startGradeCircleResize()/onGradeCircleResizeMove() plus bas, qui gèrent
-    // désormais tout le redimensionnement directionnel du Cercle de Note.
     if (axis === 'width' || axis === 'both') {
       const logicalDx = (e.clientX - startMouseX) / zoomRatio;
       mod.width = Math.max(minW, Math.round(startWidth + logicalDx));
@@ -3493,6 +3644,117 @@
     document.removeEventListener('mouseup', onModuleResizeEnd);
     // La nouvelle taille peut changer la hauteur réelle de l'en-tête (donc
     // tout le reste du document) -- même principe que onHeaderResizeEnd().
+    calculatePageBreaks();
+  }
+
+  // BUG CORRIGÉ (2026-09, [stated] : "même s'il y a des flèches vers le bas
+  // [...] ça n'agrandit pas [...] je veux que le logo ait la même réponse à
+  // l'agrandissement que le cercle note [...] des flèches d'agrandissement
+  // de chaque côté (et angle), qui s'agrandit quand on s'éloigne du centre,
+  // ou rétrécit si on s'en rapproche") : le Logo ne passe plus du tout par
+  // le système générique ci-dessus (axe par axe, coin haut-gauche fixe). Il
+  // a maintenant sa PROPRE interaction dédiée (logoResizeHandlesHTML() /
+  // startLogoBoxResize() / onLogoBoxResizeMove()), inspirée directement du
+  // Cercle de Note : 8 zones de prise tout autour de la boîte (les 4 côtés +
+  // les 4 coins), TOUTES équivalentes -- n'importe laquelle agrandit la
+  // boîte quand la souris s'éloigne de son CENTRE (mod.x/mod.y + moitié de
+  // la largeur/hauteur, figé au début du glisser), et la rétrécit quand
+  // elle s'en rapproche, tout en conservant le ratio naturel de l'image
+  // (aucun risque de retomber dans le bogue de lettrboxing corrigé plus
+  // haut, puisque largeur ET hauteur sont toujours dérivées ensemble d'un
+  // seul facteur d'échelle).
+  function logoResizeHandlesHTML() {
+    return `
+      <div class="module-resize-handle logo-resize-handle n ui-only" title="Glisser pour agrandir ou rétrécir" onmousedown="event.stopPropagation(); startLogoBoxResize(event);"></div>
+      <div class="module-resize-handle logo-resize-handle s ui-only" title="Glisser pour agrandir ou rétrécir" onmousedown="event.stopPropagation(); startLogoBoxResize(event);"></div>
+      <div class="module-resize-handle logo-resize-handle e ui-only" title="Glisser pour agrandir ou rétrécir" onmousedown="event.stopPropagation(); startLogoBoxResize(event);"></div>
+      <div class="module-resize-handle logo-resize-handle w ui-only" title="Glisser pour agrandir ou rétrécir" onmousedown="event.stopPropagation(); startLogoBoxResize(event);"></div>
+      <div class="module-resize-handle logo-resize-handle ne ui-only" title="Glisser pour agrandir ou rétrécir" onmousedown="event.stopPropagation(); startLogoBoxResize(event);"></div>
+      <div class="module-resize-handle logo-resize-handle nw ui-only" title="Glisser pour agrandir ou rétrécir" onmousedown="event.stopPropagation(); startLogoBoxResize(event);"></div>
+      <div class="module-resize-handle logo-resize-handle se ui-only" title="Glisser pour agrandir ou rétrécir" onmousedown="event.stopPropagation(); startLogoBoxResize(event);"></div>
+      <div class="module-resize-handle logo-resize-handle sw ui-only" title="Glisser pour agrandir ou rétrécir" onmousedown="event.stopPropagation(); startLogoBoxResize(event);"></div>
+    `;
+  }
+  let logoResizeState = null;
+  function startLogoBoxResize(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const mod = headerModules.find(m => m.id === 'mod-logo');
+    const target = document.querySelector('#mod-logo .logo-resize-box');
+    const container = document.getElementById('exam-header-container');
+    if (!mod || !target || !container) return;
+    const containerRect = container.getBoundingClientRect();
+    const containerLogicalWidth = container.offsetWidth;
+    const zoomRatio = (containerRect.width > 0 && containerLogicalWidth > 0) ? (containerRect.width / containerLogicalWidth) : 1;
+    const startWidth = target.offsetWidth;
+    const startHeight = target.offsetHeight;
+    const centerLogicalX = mod.x + startWidth / 2;
+    const centerLogicalY = mod.y + startHeight / 2;
+    const centerRenderedX = containerRect.left + centerLogicalX * zoomRatio;
+    const centerRenderedY = containerRect.top + centerLogicalY * zoomRatio;
+    const startDist = Math.max(Math.hypot(e.clientX - centerRenderedX, e.clientY - centerRenderedY), 1);
+    const img = target.querySelector('img');
+    const aspectRatio = (img && img.naturalWidth > 0 && img.naturalHeight > 0)
+      ? (img.naturalWidth / img.naturalHeight)
+      : (startHeight > 0 ? startWidth / startHeight : 1);
+    // Le max-width CSS statique (calculé pour l'ancien modèle coin
+    // haut-gauche fixe) plafonnerait incorrectement la boîte maintenant
+    // qu'elle peut aussi grandir vers la GAUCHE (centre fixe) -- on le
+    // désactive pour la durée du glisser, remplacé par le clamp symétrique
+    // ci-dessous (maxWidthBySpace).
+    target.style.maxWidth = 'none';
+    logoResizeState = {
+      mod, target, containerRect, containerLogicalWidth, zoomRatio,
+      startDist, startWidth, startHeight, centerLogicalX, centerLogicalY, aspectRatio,
+    };
+    e.currentTarget.classList.add('resizing');
+    document.addEventListener('mousemove', onLogoBoxResizeMove);
+    document.addEventListener('mouseup', onLogoBoxResizeEnd);
+  }
+  function onLogoBoxResizeMove(e) {
+    const state = logoResizeState;
+    if (!state) return;
+    const { mod, target, containerRect, containerLogicalWidth, zoomRatio, startDist, startWidth, startHeight, centerLogicalX, centerLogicalY, aspectRatio } = state;
+    const centerRenderedX = containerRect.left + centerLogicalX * zoomRatio;
+    const centerRenderedY = containerRect.top + centerLogicalY * zoomRatio;
+    const dist = Math.hypot(e.clientX - centerRenderedX, e.clientY - centerRenderedY);
+    // Ratio de deux distances RENDUES == ratio des mêmes distances LOGIQUES
+    // (le facteur de zoom s'annule) -- pas besoin de conversion ici.
+    const scale = dist / startDist;
+    const minW = MODULE_MIN_WIDTH['mod-logo'] || 40;
+    const minH = MODULE_MIN_HEIGHT['mod-logo'] || 24;
+    let newWidth = startWidth * scale;
+    let newHeight = newWidth / aspectRatio;
+    if (newWidth < minW) { newWidth = minW; newHeight = newWidth / aspectRatio; }
+    if (newHeight < minH) { newHeight = minH; newWidth = newHeight * aspectRatio; }
+    // Clamp anti-débordement SYMÉTRIQUE (le centre est fixe, la boîte peut
+    // donc déborder des deux côtés) : la largeur maximale est deux fois la
+    // plus petite des deux distances (centre -> bord gauche du canevas,
+    // centre -> bord droit), calculée à partir du centre FIGÉ pour toute la
+    // durée du glisser.
+    const maxWidthBySpace = Math.max(minW, 2 * Math.min(centerLogicalX, containerLogicalWidth - centerLogicalX) - 4);
+    if (newWidth > maxWidthBySpace) {
+      newWidth = maxWidthBySpace;
+      newHeight = newWidth / aspectRatio;
+    }
+    newWidth = Math.round(newWidth);
+    newHeight = Math.round(newHeight);
+    mod.width = newWidth;
+    mod.height = newHeight;
+    mod.x = Math.max(0, Math.round(centerLogicalX - newWidth / 2));
+    mod.y = Math.max(0, Math.round(centerLogicalY - newHeight / 2));
+    target.style.width = mod.width + 'px';
+    target.style.height = mod.height + 'px';
+    const el = document.getElementById('mod-logo');
+    if (el) { el.style.left = mod.x + 'px'; el.style.top = mod.y + 'px'; }
+    resizeHeaderCanvasToFitContent();
+  }
+  function onLogoBoxResizeEnd() {
+    if (!logoResizeState) return;
+    document.querySelectorAll('.logo-resize-handle.resizing').forEach(h => h.classList.remove('resizing'));
+    logoResizeState = null;
+    document.removeEventListener('mousemove', onLogoBoxResizeMove);
+    document.removeEventListener('mouseup', onLogoBoxResizeEnd);
     calculatePageBreaks();
   }
 
@@ -4773,11 +5035,27 @@
       body.innerHTML = `<div class="image-block-preview"><img src="${dataUrl}" alt="" draggable="false" style="width:${widthPct}%;"></div>`;
       body.onclick = () => input.click();
     } else {
+      // BUG CORRIGÉ (2026-09, [stated] : "quand j'ajoute une section image
+      // dans le corps de l'examen et que j'ajoute l'image par drag and
+      // drop, ça change le logo de l'établissement") : ce dropzone chargeait
+      // bien le fichier déposé dans SON PROPRE bloc via loadImageBlockFile()
+      // (correct), mais oubliait event.stopPropagation() -- le même
+      // événement de dépôt continuait donc de REMONTER jusqu'au gestionnaire
+      // de secours posé sur toute la PAGE (voir handleDrop(), attaché via
+      // ondrop="handleDrop(event)" sur chaque .paper-page), qui traite
+      // INCONDITIONNELLEMENT tout fichier image déposé comme un nouveau logo
+      // d'en-tête (voir processImageFile()). Un seul glisser-déposer
+      // déclenchait donc les DEUX effets à la fois : l'image atterrissait
+      // correctement dans le bloc Image du corps, ET écrasait en même temps
+      // le logo de l'établissement en arrière-plan. stopPropagation() ici
+      // empêche cette remontée, exactement comme pour le dépôt d'un
+      // nouveau bloc dans un espace vide (voir le commentaire de
+      // handleDrop() plus haut sur le même genre de double-traitement).
       body.innerHTML = `
         <div class="image-block-drop"
-             ondragover="event.preventDefault(); this.classList.add('dragover');"
+             ondragover="event.preventDefault(); event.stopPropagation(); this.classList.add('dragover');"
              ondragleave="this.classList.remove('dragover');"
-             ondrop="event.preventDefault(); this.classList.remove('dragover'); if(event.dataTransfer.files[0]) loadImageBlockFile(event.dataTransfer.files[0], '${blockId}');">
+             ondrop="event.preventDefault(); event.stopPropagation(); this.classList.remove('dragover'); if(event.dataTransfer.files[0]) loadImageBlockFile(event.dataTransfer.files[0], '${blockId}');">
           📷 Glissez-déposez une image ici<br><span style="font-size:10px;">ou cliquez pour parcourir</span>
         </div>`;
       body.onclick = () => input.click();
@@ -5019,14 +5297,35 @@
     sec.classList.add(styleClass);
   }
 
+  // BUG CORRIGÉ (2026-09, [stated] : "quand on choisit un contour question,
+  // et qu'ensuite on ajoute des questions dans cette section, elles n'ont
+  // pas d'encadré") : cette fonction ne touchait QUE les questions
+  // physiquement descendantes de `#${secId}` dans le DOM -- correct pour une
+  // section qui tient entièrement sur une seule page, mais dès qu'une
+  // section déborde sur une page suivante, ses questions "en trop" vivent
+  // dans un fragment "(suite)" SÉPARÉ (voir getOrCreateContinuationList()),
+  // qui n'est jamais un descendant de `#${secId}` (seulement relié par
+  // l'attribut data-continuation-of) -- le sélecteur `#${secId}
+  // .question-item` ne les voyait donc jamais, et elles gardaient
+  // silencieusement leur ANCIEN style. `sec.dataset.qStyle` (qui pilote le
+  // style des questions AJOUTÉES ensuite, voir addQuestion()) était bien mis
+  // à jour, donc une toute nouvelle question profitait déjà du bon réglage
+  // -- mais les questions déjà présentes dans un fragment de continuation
+  // restaient visuellement incohérentes avec ce que la liste déroulante
+  // affichait. Fix : on réutilise getSectionQuestionItems() (déjà écrite
+  // pour recalculateTotals(), qui combine la propre liste de la section ET
+  // tous ses fragments "(suite)" via data-continuation-of) pour que TOUTES
+  // les questions de la section, peu importe la page réelle où elles vivent
+  // actuellement, soient restylées.
   function changeQuestionsBorderStyle(secId, styleClass) {
-    const questions = document.querySelectorAll(`#${secId} .question-item`);
+    const sec = document.getElementById(secId);
+    if (!sec) return;
+    const questions = getSectionQuestionItems(sec);
     questions.forEach(q => {
       q.classList.remove('q-border-thick', 'q-border-thin', 'q-border-none');
       q.classList.add(styleClass);
     });
-    const sec = document.getElementById(secId);
-    if (sec) sec.dataset.qStyle = styleClass;
+    sec.dataset.qStyle = styleClass;
   }
 
   // Retire un éventuel préfixe "a) " hérité d'anciens exports (à l'époque où
