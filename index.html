@@ -115,7 +115,8 @@
      plus haut qu'il ne l'est vraiment. */
   .measuring-print-layout .header-logo-drop,
   .measuring-print-layout .image-item-drop,
-  .measuring-print-layout .image-block-drop {
+  .measuring-print-layout .image-block-drop,
+  .measuring-print-layout .builder-image-drop {
     display: none !important;
   }
 
@@ -1303,6 +1304,195 @@
   .essay-line { border-bottom: 1px dashed #a0aec0; height: 26px; width: 100%; }
   .justification-box { margin-top: 8px; font-style: italic; color: #4a5568; }
 
+  /* [stated] (2026-09) : "ça serait plutôt une section 'Question builder', où
+     on peut ajouter du texte où on veut dans la zone de question, des
+     numéros, des lignes réponses, des images [...] comme la structure
+     d'entête du document, où il y a une zone avec un [quadrillage] qui
+     permet d'aligner les ajouts" -- remplace entièrement le sélecteur de
+     format V53 (CUSTOM) par un vrai mini-canevas de positionnement libre,
+     directement calqué sur le canevas d'en-tête (headerModules) : chaque
+     élément (.builder-element) est positionné en absolu (left/top stockés
+     directement en style inline -- pas de tableau JS séparé, comme pour
+     n'importe quel autre contenu de question déjà géré via le DOM lui-même,
+     ex. les options QCM ou le tableau d'association) et peut être glissé/
+     redimensionné avec accroche sur grille. Voir startBuilderElementDrag()/
+     resizeBuilderCanvasToFitContent() dans le JS. */
+  .builder-canvas {
+    position: relative;
+    margin-top: 8px;
+    border: 1px dashed #cbd5e0;
+    border-radius: 4px;
+    padding: 2px;
+    /* [stated] (2026-09) : "que cette zone soit vide avec seulement un
+       quadrillage en trait hachés léger pour qu'on comprenne que c'est une
+       zone type canevas" -- quadrillage permanent (pas seulement pendant le
+       glisser, voir .snap-grid-bg plus bas qui reste dédiée à l'aide au
+       glisser) en traits pointillés fins via une tuile SVG répétée (un
+       dégradé CSS classique ne peut produire que des traits PLEINS, jamais
+       hachés). */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Cpath d='M0 0H20M0 0V20' stroke='%23cbd5e0' stroke-width='1' stroke-dasharray='2,3'/%3E%3C/svg%3E");
+    background-size: 20px 20px;
+  }
+  /* Comme .exam-header-container : un conteneur dont TOUS les enfants
+     positionnés sont en absolu s'effondrerait à 0px de hauteur sans un
+     style.height explicite -- voir resizeBuilderCanvasToFitContent(). */
+  @media print {
+    .builder-canvas { border: none; padding: 0; background-image: none; }
+  }
+  /* Grille d'aide visuelle pendant qu'on glisse un élément -- même principe
+     et même pas (20px) que .exam-header-container.dragging-header-item,
+     factorisée ici pour être partagée par les deux (voir la classe commune
+     .snap-grid-bg ci-dessous, ajoutée/retirée par les deux systèmes de
+     glisser). */
+  .snap-grid-bg {
+    background-image:
+      linear-gradient(to right, #cbd5e0 1px, transparent 1px),
+      linear-gradient(to bottom, #cbd5e0 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+  .builder-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .builder-element {
+    position: absolute;
+    min-width: 30px;
+    cursor: grab;
+    /* [stated] (2026-09) : "les textes et lignes soient toujours au plan
+       supérieur des images" -- l'empilement (z-index) ne doit PAS dépendre de
+       l'ordre d'ajout/glisser des éléments (comportement par défaut sinon,
+       chaque élément suivant dans le DOM passant au-dessus des précédents) :
+       une image reste toujours en arrière-plan par rapport aux autres types
+       d'éléments (texte/numéro/lignes/flèche/tableau), pour permettre
+       d'annoter/légender par-dessus une image sans avoir à se soucier de
+       l'ordre dans lequel les éléments ont été ajoutés. */
+    z-index: 2;
+  }
+  .builder-element[data-kind="image"] { z-index: 1; }
+  .builder-element.builder-el-grabbing { cursor: grabbing; }
+  .builder-element .builder-text:focus { cursor: text; }
+  /* z-index au-dessus des poignées de redimensionnement (z-index:3, voir
+     .builder-resize-w/.builder-resize-corner ci-dessous) : leur zone de
+     détection déborde jusque dans le coin haut-droit et pouvait autrement
+     passer AU-DESSUS du bouton ✕ et intercepter le clic destiné à la
+     suppression (constaté avec un vrai clic Playwright sur un élément
+     "numéro"). */
+  .builder-element .icon-delete-btn { position: absolute; top: -11px; right: -11px; z-index: 4; }
+  .builder-text {
+    min-width: 60px;
+    min-height: 22px;
+    padding: 2px 4px;
+    outline: none;
+  }
+  .builder-element[data-kind="number"] .builder-text {
+    font-weight: 700;
+    min-width: 24px;
+    white-space: nowrap;
+  }
+  .builder-element[data-kind="lines"], .builder-element[data-kind="table"] { width: 260px; }
+  .builder-lines-toolbar, .builder-table-toolbar { margin-bottom: 4px; }
+  .builder-table { border-collapse: collapse; width: 100%; }
+  .builder-table td { border: 1px solid #cbd5e0; padding: 4px 6px; min-width: 40px; outline: none; }
+  .builder-image-body { min-width: 60px; min-height: 40px; }
+  .builder-image-body img { display: block; width: 100%; height: 100%; object-fit: contain; }
+  .builder-image-drop {
+    width: 100%; height: 100%; min-height: 60px; display: flex; align-items: center; justify-content: center;
+    text-align: center; font-size: 11px; color: #718096; border: 1px dashed #cbd5e0; border-radius: 4px; cursor: pointer;
+  }
+  .builder-image-drop.dragover { background: #ebf4ff; border-color: #90b4d9; }
+  /* Flèche (2026-09) : hampe (trait) + pointe (triangle CSS pur, pas de SVG
+     ni d'image -- s'imprime nettement à n'importe quelle résolution). La
+     hampe est en flex:1 pour occuper toute la largeur ajustée par
+     .builder-resize-w, la pointe garde une taille fixe. */
+  .builder-arrow-body { position: relative; display: flex; align-items: center; width: 100%; height: 100%; }
+  .builder-arrow-shaft { flex: 1; height: 2px; background: #1a202c; min-width: 4px; }
+  /* [stated] (2026-09) : le cercle de rotation dédié ajouté juste à côté de la
+     poignée de redimensionnement (largeur) portait à confusion (deux petites
+     cibles côte à côte). Retiré -- on saisit directement la POINTE de la
+     flèche pour l'orienter (voir startBuilderArrowRotate(), déclenché depuis
+     .builder-arrow-head plutôt que depuis un handle séparé) ; la poignée de
+     largeur (.builder-resize-w, sur l'élément englobant) reste inchangée et
+     continue de régler la longueur. */
+  /* [stated] (2026-09) : "il faudrait que le curseur, à cet endroit, change
+     pour devenir un arc de cercle de flèche" -- au survol de la pointe (là
+     où on peut glisser pour orienter la flèche), le curseur système devient
+     une icône de rotation (arc + flèche, mini-SVG en data-URI) plutôt que le
+     simple curseur "grab" générique, pour rendre le geste de rotation
+     repérable sans ajouter de chrome visuel permanent sur la page (le
+     curseur ne s'affiche que pendant le survol, jamais à l'impression). Le
+     point d'ancrage (10 10) est le centre de l'icône 20x20. */
+  .builder-arrow-head {
+    width: 0; height: 0; flex-shrink: 0;
+    border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-left: 10px solid #1a202c;
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cpath d='M19.17 3.33v5h-5' fill='none' stroke='%231a202c' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M17.08 12.5a7.5 7.5 0 1 1-1.77-7.8L19.17 8.33' fill='none' stroke='%231a202c' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") 10 10, grab;
+  }
+  /* Même logique de repérage que .builder-resize-w/.builder-resize-corner
+     ci-dessous : teinte bleue au survol (même bleu que le reste de l'appli)
+     pour signaler que la pointe se glisse, sans repère permanent -- et même
+     icône de curseur, mais teintée en bleu pour rester cohérente avec cette
+     surbrillance pendant le glisser actif. */
+  .builder-arrow-head:hover, .builder-arrow-head.rotating { border-left-color: #2b6cb0; }
+  .builder-arrow-head.rotating {
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cpath d='M19.17 3.33v5h-5' fill='none' stroke='%232b6cb0' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M17.08 12.5a7.5 7.5 0 1 1-1.77-7.8L19.17 8.33' fill='none' stroke='%232b6cb0' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") 10 10, grabbing;
+  }
+  /* Poignée de redimensionnement en largeur seule (texte, lignes, tableau) --
+     même esprit que .module-resize-handle.resize-right. `top:12px` (au lieu
+     de 0) évite tout chevauchement avec le bouton ✕ (top:-11px, 20px de haut
+     -> déborde jusqu'à y=9px) : sans cette marge, les deux zones de clic se
+     recouvraient dans le coin haut-droit et l'une des deux interceptait
+     toujours les clics destinés à l'autre, quel que soit le z-index. */
+  .builder-resize-w {
+    position: absolute; top: 12px; right: -6px; width: 10px; height: calc(100% - 12px); cursor: ew-resize; z-index: 3;
+    background-repeat: no-repeat; background-position: center;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='16' viewBox='0 0 6 16'%3E%3Cg stroke='%23a0aec0' stroke-width='1.4' stroke-linecap='round'%3E%3Cline x1='2' y1='2' x2='2' y2='14'/%3E%3Cline x1='4' y1='2' x2='4' y2='14'/%3E%3C/g%3E%3C/svg%3E");
+  }
+  /* [stated] (2026-09) a redemandé le redimensionnement des images et
+     l'orientation des flèches -- déjà fonctionnels, mais les zones de prise
+     (largeur/coin) étaient invisibles par défaut (juste un curseur au
+     survol) : [stated] a signalé ne toujours pas réussir à les repérer
+     ("il faut trouver une façon visible et intuitive") même après le
+     correctif V59 (surbrillance au survol seulement). Le principe "pas de
+     repère permanent" retenu pour le Logo en V45 ne tenait plus la route
+     ici : contrairement au Logo (widget fixe toujours affiché), ces
+     poignées n'apparaissent que sur un élément du canevas qu'on est déjà en
+     train d'éditer -- comme dans tout éditeur (Figma, PowerPoint, Word),
+     un repère discret et permanent y est attendu, pas superflu. Ajout d'une
+     icône de prise fine et neutre (gris clair, simples traits -- pas un
+     disque plein coloré comme ce qui avait été rejeté pour le Logo) toujours
+     visible ; la surbrillance bleue au survol/glisser (ci-dessous) reste le
+     signal de confirmation "actif". */
+  .builder-resize-w:hover, .builder-resize-w.resizing { background-color: rgba(43, 108, 176, 0.35); border-radius: 2px; }
+  /* Cas de la flèche : sa pointe (.builder-arrow-head) se termine PILE au
+     bord droit de l'élément et doit rester cliquable pour l'orientation
+     (voir startBuilderArrowRotate()) -- le décalage générique ci-dessus
+     (right:-6px) mord de 4px À L'INTÉRIEUR de ce bord et recouvrait donc la
+     pointe (constaté avec un vrai clic Playwright : la poignée, de z-index
+     supérieur, interceptait systématiquement le clic destiné à la pointe).
+     Repoussée entièrement à l'extérieur du bord pour la flèche seulement.
+     (2026-09, suite) : cette poignée est désormais placée DANS
+     .builder-arrow-body (voir builderElementHTML()) pour tourner avec la
+     pointe -- [stated] a signalé qu'après avoir orienté la flèche, on ne
+     retrouvait plus la poignée de longueur (restée à l'ancien emplacement,
+     déconnectée visuellement de la flèche tournée). Le sélecteur descendant
+     ci-dessous continue de s'appliquer quelle que soit la profondeur. */
+  .builder-element[data-kind="arrow"] .builder-resize-w { right: -14px; width: 8px; }
+  /* Poignée de coin (largeur ET hauteur -- image uniquement, object-fit:contain
+     évite toute déformation même si le ratio de la boîte change). Icône de
+     prise permanente (voir note ci-dessus sur .builder-resize-w) : mêmes
+     traits fins gris clair, motif classique de "poignée de redimensionnement"
+     (trois diagonales croissantes vers le coin). */
+  .builder-resize-corner {
+    position: absolute; right: -7px; bottom: -7px; width: 16px; height: 16px; cursor: nwse-resize; z-index: 3;
+    background-repeat: no-repeat; background-position: center;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cg stroke='%23a0aec0' stroke-width='1.6' stroke-linecap='round'%3E%3Cline x1='11' y1='2' x2='2' y2='11'/%3E%3Cline x1='11' y1='6' x2='6' y2='11'/%3E%3Cline x1='11' y1='10' x2='10' y2='11'/%3E%3C/g%3E%3C/svg%3E");
+  }
+  .builder-resize-corner:hover, .builder-resize-corner.resizing { background-color: rgba(43, 108, 176, 0.35); border-radius: 2px; }
+  /* Poignée d'agrandissement manuel du canevas lui-même (même principe que
+     .header-resize-handle). */
+  .builder-canvas-resize-handle {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 8px; cursor: ns-resize;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .builder-canvas-resize-handle::after { content: ''; width: 30px; height: 3px; border-radius: 2px; background: #cbd5e0; }
+  .builder-canvas-resize-handle:hover::after, .builder-canvas-resize-handle.resizing::after { background: #718096; }
+
   /* [stated] veut pouvoir insérer une image ENTRE des questions. Réutilise
      volontairement .question-item (donc son glisser-déposer déjà en place
      via enableDragAndDropForElement(el, 'QUESTION'), son insécabilité à
@@ -1468,7 +1658,12 @@
     /* Même principe pour la zone de dépôt d'un item Image resté vide (voir
        addImageItem()/.image-item-drop) : simple invite d'édition, jamais un
        élément de contenu voulu si l'enseignant ne l'a pas encore rempli. */
-    .header-logo-drop, .image-item-drop { display: none !important; }
+    /* Même principe encore pour un élément "Image" du Question Builder resté
+       vide (.builder-image-drop, voir builderElementHTML()) : sans cette
+       règle, le texte d'invite "Cliquez ou glissez une image ici" se
+       retrouvait imprimé tel quel sur un examen si l'enseignant avait laissé
+       la case vide (repéré en relisant le PDF de test généré). */
+    .header-logo-drop, .image-item-drop, .builder-image-drop { display: none !important; }
 
     /* Règles strictes de saut de page pour l'impression */
     .topic-separator-block {
@@ -1586,7 +1781,11 @@
     </div>
 
     <!-- VOLET 3 : Structure En-tête -->
-    <div class="accordion-item active">
+    <!-- [stated] (2026-09) : "je voudrais que Structure de l'en-tête et Champ
+         Étudiant soient fermés par défaut" -- retiré "active" ici et sur le
+         VOLET 4 juste en dessous ; toggleAccordion() (inchangée) permet
+         toujours de les ouvrir/fermer normalement au clic. -->
+    <div class="accordion-item">
       <div class="accordion-header" onclick="toggleAccordion(this)">
         <span>⚙️ Structure de l'En-tête</span>
         <span class="accordion-icon">▼</span>
@@ -1608,7 +1807,7 @@
     </div>
 
     <!-- VOLET 4 : Champs Étudiant & Barème Global -->
-    <div class="accordion-item active" id="student-fields-panel">
+    <div class="accordion-item" id="student-fields-panel">
       <div class="accordion-header" onclick="toggleAccordion(this)">
         <span>👤 Champs Étudiant</span>
         <span class="accordion-icon">▼</span>
@@ -1660,14 +1859,44 @@
           <div class="draggable-block" draggable="true" ondragstart="handleDragStart(event, 'TF')" onclick="addSection('TF')">
             <span>+ Section Vrai / Faux</span> ⠿
           </div>
-          <div class="draggable-block" draggable="true" ondragstart="handleDragStart(event, 'SHORT')" onclick="addSection('SHORT')">
-            <span>+ Section Réponse Courte</span> ⠿
-          </div>
+          <!-- [stated] (2026-09) : "je pense que 'question réponse courte' et
+               'Section développement' sont redondant. On peut supprimer une,
+               et renommer l'autre pour être plus général." -- les deux
+               boutons distincts (SHORT/ESSAY) sont fusionnés en un seul type
+               interne 'ESSAY' (le nombre de lignes de réponse, déjà réglable
+               question par question via +Ligne/-Ligne, suffit à couvrir aussi
+               bien une réponse courte qu'un développement). Un ancien fichier
+               JSON/Excel exporté avant cette fusion et contenant encore le
+               type 'SHORT' continue de s'importer normalement -- voir la
+               normalisation en tête d'addQuestion(). -->
           <div class="draggable-block" draggable="true" ondragstart="handleDragStart(event, 'ESSAY')" onclick="addSection('ESSAY')">
-            <span>+ Section Développement</span> ⠿
+            <span>+ Section Réponse Écrite</span> ⠿
           </div>
           <div class="draggable-block" draggable="true" ondragstart="handleDragStart(event, 'MATCHING')" onclick="addSection('MATCHING')">
             <span>+ Section Association</span> ⠿
+          </div>
+          <!-- [stated] (2026-09) : "On pourrait ajouter une section qui
+               permet de construire son propre modèle de question, où on peut
+               écrire une question, et moduler le format de réponse [...] il
+               faut pouvoir faire un double de la question 'home made'." --
+               remplacé (2026-09) par le Question Builder ci-dessous : "ça
+               serait plutôt une section 'Question builder', où on peut
+               ajouter du texte où on veut dans la zone de question, des
+               numéros, des lignes réponses, des images [...] un peu comme la
+               structure d'entête du document, où il y a une zone avec un
+               [quadrillage] qui permet d'aligner les ajouts." -- remplace
+               entièrement le sélecteur de format à 4 choix de la V53 (type
+               'CUSTOM') : chaque question 'BUILDER' a son propre mini-canevas
+               de positionnement libre (glisser avec accroche sur grille,
+               comme le canevas d'en-tête) où on ajoute librement du texte,
+               des lignes réponse, une numérotation, une image ou un tableau
+               -- voir addQuestion()/startBuilderElementDrag()/
+               duplicateQuestion(). Le barème par question (un seul, pour
+               toute la question -- [stated] a confirmé ne pas vouloir un
+               barème par élément) existait déjà pour tous les types (champ
+               /pts éditable), rien à ajouter. -->
+          <div class="draggable-block" draggable="true" ondragstart="handleDragStart(event, 'BUILDER')" onclick="addSection('BUILDER')">
+            <span>+ Section Question Builder</span> ⠿
           </div>
         </div>
       </div>
@@ -1813,7 +2042,7 @@
     </div>
 
     <!-- [stated] : "en bas de la colonne de gauche, ajouter les copyrights,
-         avec le favicon, et le nom Éval Studio (v1.3.1) et à côté :
+         avec le favicon, et le nom Éval Studio (v1.4) et à côté :
          Copyright © 2026 Frédéric Hadi. Tous droits réservés." -- ici, le
          favicon est référencé en fichier externe (assets/favicon-32.png,
          déjà présent dans ce paquet), contrairement à l'Artifact (voir
@@ -1822,7 +2051,7 @@
     <div class="ui-only" style="display:flex; align-items:center; gap:8px; padding:12px 4px 4px 4px; margin-top:8px; border-top:1px solid #e2e8f0;">
       <img src="assets/favicon-32.png" alt="" width="24" height="24" style="border-radius:4px; flex-shrink:0;">
       <div style="line-height:1.3;">
-        <div style="font-size:12px; color:#2d3748; font-weight:600;">Éval Studio <span style="font-size:10px; color:#a0aec0; font-weight:400;">(v1.3.1)</span></div>
+        <div style="font-size:12px; color:#2d3748; font-weight:600;">Éval Studio <span style="font-size:10px; color:#a0aec0; font-weight:400;">(v1.4)</span></div>
         <div style="font-size:10px; color:#a0aec0;">Copyright © 2026 Frédéric Hadi. Tous droits réservés.</div>
       </div>
     </div>
@@ -4500,7 +4729,7 @@
     if (newType === 'TOPIC_BANNER') {
       addTopicBanner();
       newEl = document.getElementById(`topic-${topicCounter}`);
-    } else if (['QCM', 'TF', 'SHORT', 'ESSAY', 'MATCHING'].includes(newType)) {
+    } else if (['QCM', 'TF', 'ESSAY', 'MATCHING', 'BUILDER'].includes(newType)) {
       addSection(newType);
       newEl = document.getElementById(`sec-${sectionCounter}`);
     } else if (newType === 'PAGE_SEPARATOR') {
@@ -5228,9 +5457,9 @@
     if (!customData) {
       if (type === 'QCM') sectionTitle += " : Questions à choix multiples";
       if (type === 'TF') sectionTitle += " : Vrai ou Faux";
-      if (type === 'SHORT') sectionTitle += " : Réponses courtes";
-      if (type === 'ESSAY') sectionTitle += " : Questions à développement";
+      if (type === 'ESSAY') sectionTitle += " : Réponses écrites";
       if (type === 'MATCHING') sectionTitle += " : Association";
+      if (type === 'BUILDER') sectionTitle += " : Question Builder";
     } else {
       sectionTitle = customData.title || sectionTitle;
     }
@@ -5267,12 +5496,19 @@
         if (qData.type === 'IMAGE') {
           addImageItem(sectionId, qData.imageDataUrl || null, qData.caption || '');
         } else {
+          // 'BUILDER' (2026-09) : contrairement à l'ancien marqueur 'custom'
+          // de la V53, une question Question Builder porte directement son
+          // vrai type ('BUILDER') dans qData.type -- rien à démêler ici, un
+          // simple passage tel quel comme toutes les autres questions.
           addQuestion(sectionId, qData.type || type, qData);
         }
       });
     } else {
       addQuestion(sectionId, type);
-      addQuestion(sectionId, type);
+      // Le Builder est plus lourd visuellement (un canevas entier par
+      // question) : une nouvelle section démarre donc avec une seule
+      // question plutôt que les 2 par défaut des autres types.
+      if (type !== 'BUILDER') addQuestion(sectionId, type);
     }
     reorderAllQuestions();
     recalculateTotals();
@@ -5360,20 +5596,22 @@
     });
   }
 
-  function addQuestion(secId, type, qData = null) {
-    const sec = document.getElementById(secId);
-    if (!sec) return;
-    const qList = sec.querySelector('.questions-list');
-    const qStyle = sec.dataset.qStyle || 'q-border-none';
+  // BUG ÉVITÉ / rétrocompat (2026-09, fusion Réponse Courte + Développement,
+  // voir le commentaire sur le bouton de palette "+ Section Réponse Écrite")
+  // : un ancien fichier JSON/Excel peut encore contenir le type 'SHORT' --
+  // normalisé ici, au point d'entrée UNIQUE de création d'une question,
+  // pour que tout le reste du code (rendu, export Excel/JSON, calcul de
+  // pagination) n'ait jamais besoin de connaître ce nom légataire.
+  function normalizeQuestionType(type) {
+    return type === 'SHORT' ? 'ESSAY' : type;
+  }
 
-    const qEl = document.createElement('div');
-    qEl.className = `question-item ${qStyle}`;
-    qEl.dataset.type = type;
-
+  // Génère le HTML de la zone de réponse pour un format donné (QCM, Vrai/Faux,
+  // Réponse écrite à lignes, Association) -- factorisé hors d'addQuestion()
+  // pour que le rendu initial d'une question et sa reconstruction (import
+  // JSON/Excel, duplication) passent toujours par le même code.
+  function buildAnswerBodyHTML(type, qData) {
     let bodyHTML = '';
-    const textPrompt = (qData && qData.prompt) ? qData.prompt : 'Énoncé de la question ici...';
-    const pts = (qData && qData.points !== undefined && qData.points !== null) ? qData.points : 1;
-
     if (type === 'QCM') {
       const rawOpts = (qData && qData.options && qData.options.length) ? qData.options : ['Choix 1', 'Choix 2', 'Choix 3', 'Choix 4'];
       const optsHTML = rawOpts.map((o) => qcmOptionRowHTML(cleanQcmOptionText(o))).join('');
@@ -5395,8 +5633,11 @@
           </div>
           <div class="justification-box" style="display:none;"></div>
         </div>`;
-    } else if (type === 'SHORT' || type === 'ESSAY') {
-      const lineCount = (qData && qData.lines) ? qData.lines : (type === 'SHORT' ? 2 : 5);
+    } else if (type === 'ESSAY') {
+      // Fusion Réponse Courte + Développement (2026-09) : un seul défaut
+      // (3 lignes) au lieu de 2 (SHORT) / 5 (ESSAY) -- +Ligne/-Ligne permet
+      // toujours d'ajuster ensuite au cas par cas, courte ou longue réponse.
+      const lineCount = (qData && qData.lines) ? qData.lines : 3;
       let linesHTML = '';
       for (let i = 0; i < lineCount; i++) {
         linesHTML += '<div class="essay-line"></div>';
@@ -5411,28 +5652,631 @@
           ${linesHTML}
         </div>`;
     } else if (type === 'MATCHING') {
-      const rows = (qData && qData.rows && qData.rows.length) ? qData.rows : [
+      const rawRows = (qData && qData.rows && qData.rows.length) ? qData.rows : [
         { term: '1. Élément A', def: 'A. Définition A' },
         { term: '2. Élément B', def: 'B. Définition B' }
       ];
-      let rowsHTML = rows.map(r => `
-        <tr>
-          <td class="editable" contenteditable="true">${escapeHtml(r.term)}</td>
-          <td style="width:50px; text-align:center;">[ &nbsp; ]</td>
-          <td class="editable" contenteditable="true">${escapeHtml(r.def)}</td>
-        </tr>
-      `).join('');
+      // [stated] (2026-09) : "pour le tableau de question d'association, il
+      // faut pouvoir ajouter des colonnes" -- réponse retenue : des groupes
+      // Terme/Définition SUPPLÉMENTAIRES (pas un tableau libre façon Question
+      // Builder), pour associer plusieurs paires terme/définition sur une
+      // même ligne. Rétrocompat : un ancien qData.rows est un tableau plat de
+      // {term,def} (1 seule paire par ligne, sans qData.colGroups) -- on le
+      // normalise ici en {pairs:[{term,def}]} pour traiter 1 ou plusieurs
+      // groupes de façon uniforme ; un ancien examen s'affiche donc à
+      // l'identique (1 groupe, aucun numéro dans l'en-tête, voir
+      // matchingHeaderCellsHTML() ci-dessous).
+      const rows = rawRows.map(r => r.pairs ? r : { pairs: [{ term: r.term || '', def: r.def || '' }] });
+      const colGroups = (qData && qData.colGroups) || (rows[0] && rows[0].pairs.length) || 1;
+
+      let rowsHTML = rows.map(r => {
+        let cells = '';
+        for (let g = 0; g < colGroups; g++) cells += matchingRowCellsHTML(r.pairs[g]);
+        return `<tr>${cells}</tr>`;
+      }).join('');
 
       bodyHTML = `
         <div class="ui-only" style="margin-bottom: 5px;">
           <button class="btn-action" onclick="adjustMatchingRows(this, 1)">+ Ligne</button>
           <button class="btn-action" onclick="adjustMatchingRows(this, -1)">- Ligne</button>
+          <button class="btn-action" onclick="adjustMatchingCols(this, 1)">+ Colonne</button>
+          <button class="btn-action" onclick="adjustMatchingCols(this, -1)">- Colonne</button>
         </div>
-        <table class="matching-table">
-          <tr><th>Terme</th><th>Lettre</th><th>Définition</th></tr>
+        <table class="matching-table" data-col-groups="${colGroups}">
+          <tr>${matchingHeaderCellsHTML(colGroups)}</tr>
           ${rowsHTML}
         </table>`;
     }
+    return bodyHTML;
+  }
+
+  const BUILDER_GRID_SNAP_PX = 10;
+  const BUILDER_MIN_GAP_PX = 16;
+  const BUILDER_ELEMENT_MIN_WIDTH = 30;
+  const BUILDER_ELEMENT_MIN_HEIGHT = 24;
+
+  // Génère le HTML d'UN élément du canevas (texte, numéro, lignes réponse,
+  // image, tableau) à partir de ses données -- utilisée aussi bien pour un
+  // tout nouvel élément vide (addBuilderElement()) que pour reconstruire un
+  // canevas complet à l'import/duplication (builderCanvasHTML()).
+  function builderElementHTML(elData) {
+    const kind = elData.kind;
+    const x = elData.x || 0;
+    const y = elData.y || 0;
+    const styleParts = [`left:${x}px`, `top:${y}px`];
+    let innerHTML = '';
+    let resizeHandleHTML = '';
+    let extraAttrs = '';
+
+    if (kind === 'text' || kind === 'number') {
+      const width = elData.width || (kind === 'number' ? 34 : 160);
+      styleParts.push(`width:${width}px`);
+      const defaultText = kind === 'number' ? 'a)' : 'Texte...';
+      const content = (elData.text !== undefined && elData.text !== null) ? elData.text : defaultText;
+      innerHTML = `<div class="editable builder-text" contenteditable="true">${escapeHtml(content)}</div>`;
+      // [stated] (2026-09) : pour "Numéro" (une simple étiquette courte
+      // "a)"/"1)", en `white-space:nowrap` -- élargir sa boîte n'a jamais eu
+      // d'effet visible sur le texte) la poignée de largeur, avec sa nouvelle
+      // icône permanente (V60), était prise pour LE moyen d'agir sur
+      // l'élément ("semble signifier agrandir le numéro ou lettre") alors
+      // que [stated] voulait simplement pouvoir le DÉPLACER -- ce qui
+      // fonctionnait déjà (tout l'élément, y compris son texte, est
+      // glissable via startBuilderElementDrag(), avec seuil anti-clic pour
+      // ne pas gêner l'édition du texte). Retirée pour ce type uniquement :
+      // aucune fonction perdue, un repère trompeur en moins. "Texte" garde
+      // sa poignée (utile : sa largeur détermine le retour à la ligne).
+      if (kind === 'text') {
+        resizeHandleHTML = `<div class="builder-resize-w ui-only" title="Glisser pour ajuster la largeur" onmousedown="event.stopPropagation(); startBuilderElementResize(event, this, 'w');"></div>`;
+      }
+    } else if (kind === 'lines') {
+      const width = elData.width || 220;
+      styleParts.push(`width:${width}px`);
+      const lineCount = elData.lines || 3;
+      let linesHTML = '';
+      for (let i = 0; i < lineCount; i++) linesHTML += '<div class="essay-line"></div>';
+      innerHTML = `
+        <div class="ui-only builder-lines-toolbar">
+          <button class="btn-action" onmousedown="event.stopPropagation()" onclick="adjustBuilderLines(this, 1)">+ Ligne</button>
+          <button class="btn-action" onmousedown="event.stopPropagation()" onclick="adjustBuilderLines(this, -1)">- Ligne</button>
+        </div>
+        <div class="essay-lines-container">${linesHTML}</div>`;
+      resizeHandleHTML = `<div class="builder-resize-w ui-only" title="Glisser pour ajuster la largeur" onmousedown="event.stopPropagation(); startBuilderElementResize(event, this, 'w');"></div>`;
+    } else if (kind === 'arrow') {
+      // [stated] (2026-09) : "il faudrait aussi pouvoir ajouter des
+      // flèches" -- "les flèches sont des ajouts de la même façon qu'on peut
+      // ajouter des lignes" : un type d'élément de plus dans la barre
+      // d'outils (comme "+ Lignes"), pas un outil de dessin à part avec
+      // poignée de rotation. Flèche horizontale simple (hampe + pointe CSS),
+      // longueur ajustable par la même poignée de largeur que texte/lignes/
+      // tableau ; hauteur fixe (n'a pas de sens de l'étirer verticalement).
+      // Orientation (2026-09, suite) : "les flèches [...] puissent être
+      // ajustées [...] dans l'orientation" -- rotation appliquée UNIQUEMENT
+      // à .builder-arrow-body (transform CSS), jamais à la boîte englobante
+      // .builder-element : position/redimensionnement/pagination continuent
+      // de raisonner sur une boîte non tournée. Voir startBuilderArrowRotate().
+      // [stated] (suite, même jour) : le cercle de rotation dédié ajouté à
+      // côté de la poignée de longueur portait à confusion (2 petites cibles
+      // voisines) -- retiré ; on glisse directement la POINTE (.builder-
+      // arrow-head, elle-même) pour orienter, sans handle ni marqueur visuel
+      // supplémentaire.
+      // [stated] (2026-09, suite) : "quand on change la flèche de rotation,
+      // il n'est plus possible de changer sa longueur" -- la poignée
+      // .builder-resize-w restait positionnée sur le bord droit de la boîte
+      // ENGLOBANTE (non tournée), donc totalement décalée de la pointe une
+      // fois la flèche orientée (ex. flèche pointant vers le bas : la
+      // poignée restait à droite, dans le vide). Corrigé en la plaçant
+      // DANS .builder-arrow-body (donc soumise à la même rotation CSS que la
+      // hampe/pointe -- elle suit désormais visuellement la pointe quelle
+      // que soit l'orientation) ; voir aussi onBuilderElementResizeMove() qui
+      // projette le glisser sur l'axe local (tourné) de la flèche pour que
+      // "tirer dans le sens de la pointe" continue d'allonger, peu importe
+      // l'angle.
+      const width = elData.width || 100;
+      const rotation = elData.rotation || 0;
+      styleParts.push(`width:${width}px`, `height:24px`);
+      extraAttrs = ` data-rotation="${rotation}"`;
+      innerHTML = `<div class="builder-arrow-body" style="transform:rotate(${rotation}deg);">
+        <div class="builder-arrow-shaft"></div><div class="builder-arrow-head" title="Glisser pour orienter la flèche" onmousedown="event.stopPropagation(); startBuilderArrowRotate(event, this);"></div>
+        <div class="builder-resize-w ui-only" title="Glisser pour ajuster la longueur" onmousedown="event.stopPropagation(); startBuilderElementResize(event, this, 'w');"></div>
+      </div>`;
+    } else if (kind === 'table') {
+      const width = elData.width || 260;
+      styleParts.push(`width:${width}px`);
+      const rows = (elData.rows && elData.rows.length) ? elData.rows : [['', ''], ['', '']];
+      const rowsHTML = rows.map(r => `<tr>${r.map(c => `<td class="editable" contenteditable="true">${escapeHtml(c)}</td>`).join('')}</tr>`).join('');
+      innerHTML = `
+        <div class="ui-only builder-table-toolbar">
+          <button class="btn-action" onmousedown="event.stopPropagation()" onclick="adjustBuilderTableRows(this, 1)">+ Ligne</button>
+          <button class="btn-action" onmousedown="event.stopPropagation()" onclick="adjustBuilderTableRows(this, -1)">- Ligne</button>
+          <button class="btn-action" onmousedown="event.stopPropagation()" onclick="adjustBuilderTableCols(this, 1)">+ Colonne</button>
+          <button class="btn-action" onmousedown="event.stopPropagation()" onclick="adjustBuilderTableCols(this, -1)">- Colonne</button>
+        </div>
+        <table class="builder-table"><tbody>${rowsHTML}</tbody></table>`;
+      resizeHandleHTML = `<div class="builder-resize-w ui-only" title="Glisser pour ajuster la largeur" onmousedown="event.stopPropagation(); startBuilderElementResize(event, this, 'w');"></div>`;
+    } else if (kind === 'image') {
+      const width = elData.width || 160;
+      const height = elData.height || 100;
+      styleParts.push(`width:${width}px`, `height:${height}px`);
+      const dataUrl = elData.imageDataUrl || null;
+      const bodyInner = dataUrl
+        ? `<img src="${dataUrl}" alt="" draggable="false">`
+        : `<div class="builder-image-drop"
+               onclick="this.closest('.builder-element').querySelector('.builder-image-input').click()"
+               ondragover="event.preventDefault(); event.stopPropagation(); this.classList.add('dragover');"
+               ondragleave="this.classList.remove('dragover');"
+               ondrop="event.preventDefault(); event.stopPropagation(); this.classList.remove('dragover'); if(event.dataTransfer.files[0]) loadBuilderImageFile(event.dataTransfer.files[0], this.closest('.builder-element'));">
+             📷 Cliquez ou glissez une image ici
+           </div>`;
+      innerHTML = `<div class="builder-image-body">${bodyInner}</div><input type="file" class="builder-image-input" accept="image/*" style="display:none;" onchange="if(event.target.files[0]) loadBuilderImageFile(event.target.files[0], this.closest('.builder-element'));">`;
+      resizeHandleHTML = `<div class="builder-resize-corner ui-only" title="Glisser pour redimensionner" onmousedown="event.stopPropagation(); startBuilderElementResize(event, this, 'both');"></div>`;
+    }
+
+    return `
+      <div class="builder-element" data-kind="${kind}"${extraAttrs} style="${styleParts.join('; ')}" onmousedown="startBuilderElementDrag(event, this)">
+        <button class="icon-delete-btn ui-only" title="Supprimer cet élément" onmousedown="event.stopPropagation()" onclick="removeBuilderElement(this)">✕</button>
+        ${innerHTML}
+        ${resizeHandleHTML}
+      </div>`;
+  }
+
+  // Construit le canevas complet (barre d'outils + zone) d'une question
+  // BUILDER -- à partir de qData.elements (import/duplication), ou VIDE pour
+  // une toute nouvelle question. [stated] (2026-09) : contrairement aux
+  // versions précédentes qui pré-remplissaient d'un élément "Lignes de
+  // réponse" par défaut, la zone doit rester vide (seul le quadrillage
+  // pointillé de fond -- voir .builder-canvas en CSS -- signale que c'est un
+  // canevas) ; hauteur minimale garantie par resizeBuilderCanvasToFitContent()
+  // (60px) même sans aucun élément.
+  function builderCanvasHTML(qData) {
+    const elements = (qData && qData.elements) ? qData.elements : [];
+    const elementsHTML = elements.map(builderElementHTML).join('');
+    const manualHeight = (qData && qData.canvasHeight) ? qData.canvasHeight : 0;
+    const heightAttr = manualHeight ? ` style="height:${manualHeight}px;" data-manual-height="${manualHeight}"` : '';
+    return `
+      <div class="builder-toolbar ui-only">
+        <button class="btn-action" onclick="addBuilderElement(this, 'text')">+ Texte</button>
+        <button class="btn-action" onclick="addBuilderElement(this, 'lines')">+ Lignes</button>
+        <button class="btn-action" onclick="addBuilderElement(this, 'number')">+ Numéro</button>
+        <button class="btn-action" onclick="addBuilderElement(this, 'arrow')">+ Flèche</button>
+        <button class="btn-action" onclick="addBuilderElement(this, 'image')">+ Image</button>
+        <button class="btn-action" onclick="addBuilderElement(this, 'table')">+ Tableau</button>
+        <button class="btn-action" title="Dupliquer toute la question (avec tous ses éléments)" onclick="duplicateQuestion(this)">⧉ Dupliquer</button>
+      </div>
+      <div class="builder-canvas"${heightAttr}>
+        ${elementsHTML}
+        <div class="builder-canvas-resize-handle ui-only" title="Glisser pour agrandir l'espace" onmousedown="startBuilderCanvasResize(event, this)"></div>
+      </div>`;
+  }
+
+  // Ajoute un nouvel élément vide à une position en cascade (léger décalage à
+  // chaque ajout, pour ne pas empiler tous les nouveaux éléments exactement
+  // au même endroit) -- le vrai positionnement final reste à la charge de
+  // l'enseignant, en le glissant ensuite où il veut (accroche sur grille de
+  // BUILDER_GRID_SNAP_PX, voir startBuilderElementDrag()).
+  function addBuilderElement(btn, kind) {
+    const canvas = btn.closest('.question-item').querySelector('.builder-canvas');
+    if (!canvas) return;
+    const count = canvas.querySelectorAll(':scope > .builder-element').length;
+    const cascade = (count % 6) * 16;
+    canvas.insertAdjacentHTML('beforeend', builderElementHTML({ kind, x: 10 + cascade, y: 10 + cascade }));
+    resizeBuilderCanvasToFitContent(canvas);
+    calculatePageBreaks();
+  }
+
+  function removeBuilderElement(btn) {
+    const el = btn.closest('.builder-element');
+    const canvas = el ? el.closest('.builder-canvas') : null;
+    if (el) el.remove();
+    if (canvas) resizeBuilderCanvasToFitContent(canvas);
+    calculatePageBreaks();
+  }
+
+  function loadBuilderImageFile(file, elNode) {
+    if (!file.type.startsWith('image/')) { showInlineNotice('Choisissez un fichier image.', true); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const body = elNode.querySelector('.builder-image-body');
+      if (body) body.innerHTML = `<img src="${e.target.result}" alt="" draggable="false">`;
+      calculatePageBreaks();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // Comme #exam-header-container : un conteneur dont TOUS les enfants
+  // positionnés sont en absolu s'effondrerait à 0px de hauteur sans un
+  // style.height explicite -- voir resizeHeaderCanvasToFitContent() pour le
+  // même principe côté en-tête. `data-manual-height`, posé par
+  // startBuilderCanvasResize(), "gagne" sur l'espace minimal automatique tant
+  // que le contenu ne le dépasse pas lui-même (même Math.max qu'en-tête).
+  function resizeBuilderCanvasToFitContent(canvas) {
+    if (!canvas) return;
+    let maxBottom = 0;
+    Array.from(canvas.children).forEach((child) => {
+      if (!child.classList.contains('builder-element')) return;
+      maxBottom = Math.max(maxBottom, child.offsetTop + child.offsetHeight);
+    });
+    const autoHeight = maxBottom + BUILDER_MIN_GAP_PX;
+    const manualHeight = parseFloat(canvas.dataset.manualHeight) || 0;
+    canvas.style.height = Math.max(autoHeight, manualHeight, 60) + 'px';
+  }
+
+  // Glisser-déposer (souris bas niveau, comme startHeaderItemDrag()) de la
+  // ligne de séparation du canevas elle-même, pour réserver manuellement plus
+  // d'espace que le minimum automatique -- même mécanique que
+  // startHeaderResize().
+  let builderCanvasResizeState = null;
+  function startBuilderCanvasResize(e, handle) {
+    e.preventDefault();
+    e.stopPropagation();
+    const canvas = handle.closest('.builder-canvas');
+    if (!canvas) return;
+    const renderedHeight = canvas.getBoundingClientRect().height;
+    const logicalHeight = canvas.offsetHeight;
+    builderCanvasResizeState = {
+      canvas,
+      startMouseY: e.clientY,
+      startLogicalHeight: logicalHeight,
+      zoomRatio: renderedHeight > 0 && logicalHeight > 0 ? (renderedHeight / logicalHeight) : 1,
+    };
+    handle.classList.add('resizing');
+    document.addEventListener('mousemove', onBuilderCanvasResizeMove);
+    document.addEventListener('mouseup', onBuilderCanvasResizeEnd);
+  }
+  function onBuilderCanvasResizeMove(e) {
+    if (!builderCanvasResizeState) return;
+    const { canvas, startMouseY, startLogicalHeight, zoomRatio } = builderCanvasResizeState;
+    let maxBottom = 0;
+    Array.from(canvas.children).forEach((child) => {
+      if (!child.classList.contains('builder-element')) return;
+      maxBottom = Math.max(maxBottom, child.offsetTop + child.offsetHeight);
+    });
+    const autoMin = maxBottom + BUILDER_MIN_GAP_PX;
+    const logicalDelta = (e.clientY - startMouseY) / zoomRatio;
+    const desired = Math.max(60, autoMin, startLogicalHeight + logicalDelta);
+    canvas.dataset.manualHeight = desired;
+    canvas.style.height = desired + 'px';
+  }
+  function onBuilderCanvasResizeEnd() {
+    if (!builderCanvasResizeState) return;
+    const canvas = builderCanvasResizeState.canvas;
+    const handle = canvas ? canvas.querySelector('.builder-canvas-resize-handle') : null;
+    if (handle) handle.classList.remove('resizing');
+    builderCanvasResizeState = null;
+    document.removeEventListener('mousemove', onBuilderCanvasResizeMove);
+    document.removeEventListener('mouseup', onBuilderCanvasResizeEnd);
+    calculatePageBreaks();
+  }
+
+  // Glisser un élément du canevas -- même seuil clic-vs-glisser et même
+  // conversion rendu/logique (zoomRatio) que startHeaderItemDrag(), mais
+  // généralisée à N'IMPORTE QUEL .builder-canvas (un par question BUILDER)
+  // au lieu du seul canevas d'en-tête.
+  let builderDragState = null;
+  const BUILDER_EDIT_DRAG_THRESHOLD_PX = 4;
+  function startBuilderElementDrag(e, el) {
+    const canvas = el.closest('.builder-canvas');
+    if (!canvas) return;
+    const isEditableTarget = !!(e.target && e.target.closest && e.target.closest('[contenteditable="true"]'));
+    // [stated] (2026-09) : "il faudrait plutôt qu'on puisse déplacer cette
+    // lettre (ou chiffre) de manière intuitive" -- glisser un élément
+    // "Numéro" en partant directement de son texte (le seul endroit où le
+    // saisir, une fois sa poignée de largeur retirée ci-dessus) échouait par
+    // intermittence : sans preventDefault() sur ce mousedown (nécessaire
+    // avant pour laisser un simple CLIC placer le curseur d'édition), le
+    // navigateur démarrait sa propre sélection de texte native pendant le
+    // glisser, qui pouvait ensuite basculer en glisser-déposer HTML natif de
+    // la sélection et geler le suivi de la souris par notre code. Corrigé en
+    // empêchant TOUJOURS le comportement par défaut ici (donc aucune
+    // sélection/caret natif ne démarre plus jamais) ; le clic simple (sans
+    // glisser réel) reste géré : voir placeCaretAtPointInEditable(), appelée
+    // depuis onBuilderElementDragEnd() pour replacer nous-mêmes le curseur
+    // d'édition à l'endroit cliqué, comme le ferait le navigateur.
+    e.preventDefault();
+    e.stopPropagation();
+    const canvasRenderedRect = canvas.getBoundingClientRect();
+    const canvasLogicalWidth = canvas.offsetWidth;
+    builderDragState = {
+      el, canvas,
+      startMouseX: e.clientX, startMouseY: e.clientY,
+      startX: parseFloat(el.style.left) || 0, startY: parseFloat(el.style.top) || 0,
+      zoomRatio: (canvasRenderedRect.width > 0 && canvasLogicalWidth > 0) ? (canvasRenderedRect.width / canvasLogicalWidth) : 1,
+      canvasWidth: canvasLogicalWidth,
+      elWidth: el.offsetWidth,
+      pendingEditableClick: isEditableTarget,
+      dragStarted: !isEditableTarget,
+      movedPastThreshold: false,
+    };
+    if (!isEditableTarget) {
+      canvas.classList.add('dragging-element', 'snap-grid-bg');
+      el.classList.add('builder-el-grabbing');
+    }
+    document.addEventListener('mousemove', onBuilderElementDragMove);
+    document.addEventListener('mouseup', onBuilderElementDragEnd);
+  }
+  function onBuilderElementDragMove(e) {
+    if (!builderDragState) return;
+    if (builderDragState.pendingEditableClick) {
+      const dx = e.clientX - builderDragState.startMouseX;
+      const dy = e.clientY - builderDragState.startMouseY;
+      if (Math.abs(dx) < BUILDER_EDIT_DRAG_THRESHOLD_PX && Math.abs(dy) < BUILDER_EDIT_DRAG_THRESHOLD_PX) return;
+      builderDragState.pendingEditableClick = false;
+      builderDragState.dragStarted = true;
+      if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+      builderDragState.canvas.classList.add('dragging-element', 'snap-grid-bg');
+      builderDragState.el.classList.add('builder-el-grabbing');
+    }
+    if (!builderDragState.movedPastThreshold) {
+      const rawDx = e.clientX - builderDragState.startMouseX;
+      const rawDy = e.clientY - builderDragState.startMouseY;
+      if (Math.abs(rawDx) >= BUILDER_EDIT_DRAG_THRESHOLD_PX || Math.abs(rawDy) >= BUILDER_EDIT_DRAG_THRESHOLD_PX) {
+        builderDragState.movedPastThreshold = true;
+      }
+    }
+    const { el, startMouseX, startMouseY, startX, startY, zoomRatio, canvasWidth, elWidth, canvas } = builderDragState;
+    let newX = startX + (e.clientX - startMouseX) / zoomRatio;
+    let newY = startY + (e.clientY - startMouseY) / zoomRatio;
+    newX = Math.max(0, Math.round(newX / BUILDER_GRID_SNAP_PX) * BUILDER_GRID_SNAP_PX);
+    newY = Math.max(0, Math.round(newY / BUILDER_GRID_SNAP_PX) * BUILDER_GRID_SNAP_PX);
+    const maxX = Math.max(0, canvasWidth - elWidth);
+    newX = Math.min(newX, Math.floor(maxX / BUILDER_GRID_SNAP_PX) * BUILDER_GRID_SNAP_PX);
+    el.style.left = newX + 'px';
+    el.style.top = newY + 'px';
+    resizeBuilderCanvasToFitContent(canvas);
+  }
+  // Replace le curseur d'édition au point cliqué -- appelée quand un simple
+  // clic (sans glisser réel) atterrit sur un champ contenteditable dont le
+  // placement natif du curseur a été supprimé par le preventDefault()
+  // désormais systématique de startBuilderElementDrag() (voir ce
+  // commentaire). Reproduit ce que le navigateur aurait fait lui-même.
+  function placeCaretAtPointInEditable(el, x, y) {
+    el.focus();
+    let range = null;
+    if (document.caretRangeFromPoint) {
+      range = document.caretRangeFromPoint(x, y);
+    } else if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(x, y);
+      if (pos && pos.offsetNode) { range = document.createRange(); range.setStart(pos.offsetNode, pos.offset); }
+    }
+    if (range) {
+      range.collapse(true);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  }
+  function onBuilderElementDragEnd(e) {
+    if (!builderDragState) return;
+    const { canvas, el, dragStarted, movedPastThreshold, pendingEditableClick } = builderDragState;
+    canvas.classList.remove('dragging-element', 'snap-grid-bg');
+    el.classList.remove('builder-el-grabbing');
+    document.removeEventListener('mousemove', onBuilderElementDragMove);
+    document.removeEventListener('mouseup', onBuilderElementDragEnd);
+    const wasPlainEditableClick = pendingEditableClick && !movedPastThreshold;
+    builderDragState = null;
+    if (wasPlainEditableClick && e) {
+      const textEl = e.target && e.target.closest ? e.target.closest('[contenteditable="true"]') : null;
+      if (textEl) placeCaretAtPointInEditable(textEl, e.clientX, e.clientY);
+    }
+    if (!dragStarted) return;
+    // Voir suppressNextClickAfterHeaderDrag() : même clic fantôme après un
+    // VRAI glisser (souris restée sous le curseur au relâchement), réutilisé
+    // tel quel puisqu'il ne fait qu'avaler le prochain clic sans rien
+    // supposer sur l'élément concerné.
+    if (movedPastThreshold) {
+      document.addEventListener('click', suppressNextClickAfterHeaderDrag, { capture: true, once: true });
+    }
+    calculatePageBreaks();
+  }
+
+  // Redimensionnement d'un élément -- largeur seule ('w', texte/numéro/
+  // lignes/tableau) ou largeur+hauteur ('both', image seulement -- object-
+  // fit:contain empêche toute déformation même si le ratio de la boîte
+  // change).
+  let builderResizeState = null;
+  function startBuilderElementResize(e, handle, axis) {
+    e.preventDefault();
+    e.stopPropagation();
+    const el = handle.closest('.builder-element');
+    const canvas = el ? el.closest('.builder-canvas') : null;
+    if (!el || !canvas) return;
+    const canvasRect = canvas.getBoundingClientRect();
+    const canvasLogicalWidth = canvas.offsetWidth;
+    builderResizeState = {
+      el, canvas, axis,
+      startMouseX: e.clientX, startMouseY: e.clientY,
+      startWidth: el.offsetWidth, startHeight: el.offsetHeight,
+      zoomRatio: (canvasRect.width > 0 && canvasLogicalWidth > 0) ? (canvasRect.width / canvasLogicalWidth) : 1,
+    };
+    handle.classList.add('resizing');
+    document.addEventListener('mousemove', onBuilderElementResizeMove);
+    document.addEventListener('mouseup', onBuilderElementResizeEnd);
+  }
+  function onBuilderElementResizeMove(e) {
+    if (!builderResizeState) return;
+    const { el, canvas, axis, startMouseX, startMouseY, startWidth, startHeight, zoomRatio } = builderResizeState;
+    const rawDx = e.clientX - startMouseX;
+    const rawDy = e.clientY - startMouseY;
+    // [stated] (2026-09) : après rotation d'une flèche, tirer la poignée de
+    // longueur dans le sens visuel de la pointe ne l'allongeait plus (seul
+    // e.clientX comptait, quel que soit l'angle). On projette maintenant le
+    // vecteur de glisser sur l'axe local de l'élément (celui de sa rotation
+    // CSS, 0° pour tout le reste puisque seules les flèches ont
+    // data-rotation) : à 0°, cos=1/sin=0 -> identique à avant (aucune
+    // régression pour texte/lignes/tableau/image) ; à 90°, cos=0/sin=1 ->
+    // c'est le déplacement vertical qui allonge, cohérent avec une flèche
+    // qui pointe désormais vers le bas.
+    const rotationRad = (parseFloat(el.dataset.rotation) || 0) * Math.PI / 180;
+    const logicalDx = (rawDx * Math.cos(rotationRad) + rawDy * Math.sin(rotationRad)) / zoomRatio;
+    const newWidth = Math.max(BUILDER_ELEMENT_MIN_WIDTH, Math.round(startWidth + logicalDx));
+    el.style.width = newWidth + 'px';
+    if (axis === 'both') {
+      const logicalDy = rawDy / zoomRatio;
+      const newHeight = Math.max(BUILDER_ELEMENT_MIN_HEIGHT, Math.round(startHeight + logicalDy));
+      el.style.height = newHeight + 'px';
+    }
+    resizeBuilderCanvasToFitContent(canvas);
+  }
+  function onBuilderElementResizeEnd() {
+    if (!builderResizeState) return;
+    document.querySelectorAll('.builder-resize-w.resizing, .builder-resize-corner.resizing').forEach(h => h.classList.remove('resizing'));
+    builderResizeState = null;
+    document.removeEventListener('mousemove', onBuilderElementResizeMove);
+    document.removeEventListener('mouseup', onBuilderElementResizeEnd);
+    calculatePageBreaks();
+  }
+
+  // Rotation d'une flèche (2026-09, révisé le même jour) -- déclenchée en
+  // glissant DIRECTEMENT .builder-arrow-head (la pointe elle-même, plus de
+  // handle rond dédié -- retiré car source de confusion à côté de la poignée
+  // de longueur). La rotation CSS ne s'applique JAMAIS à la boîte englobante
+  // .builder-element (qui pilote position/drag/redimensionnement/hauteur de
+  // pagination) -- uniquement à .builder-arrow-body à l'intérieur, qui a
+  // `position:relative` pour que la pointe tourne avec le reste de la flèche
+  // et reste visuellement à l'extrémité. Angle calculé par atan2 sur le
+  // centre réel de l'élément (getBoundingClientRect, donc en espace écran) :
+  // pas de correction de ratio de zoom nécessaire ici (contrairement au
+  // glisser de position/taille) puisque le centre et la souris sont lus dans
+  // le même référentiel. Accroche par pas de 15° pour un alignement propre.
+  const BUILDER_ROTATE_SNAP_DEG = 15;
+  let builderRotateState = null;
+  function startBuilderArrowRotate(e, handle) {
+    e.preventDefault();
+    e.stopPropagation();
+    const el = handle.closest('.builder-element');
+    if (!el) return;
+    builderRotateState = { el };
+    handle.classList.add('rotating');
+    document.addEventListener('mousemove', onBuilderArrowRotateMove);
+    document.addEventListener('mouseup', onBuilderArrowRotateEnd);
+  }
+  function onBuilderArrowRotateMove(e) {
+    if (!builderRotateState) return;
+    const { el } = builderRotateState;
+    const rect = el.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    let angle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * 180 / Math.PI;
+    angle = Math.round(angle / BUILDER_ROTATE_SNAP_DEG) * BUILDER_ROTATE_SNAP_DEG;
+    angle = ((angle % 360) + 360) % 360;
+    const body = el.querySelector('.builder-arrow-body');
+    if (body) body.style.transform = `rotate(${angle}deg)`;
+    el.dataset.rotation = angle;
+  }
+  function onBuilderArrowRotateEnd() {
+    if (!builderRotateState) return;
+    document.querySelectorAll('.builder-arrow-head.rotating').forEach(h => h.classList.remove('rotating'));
+    builderRotateState = null;
+    document.removeEventListener('mousemove', onBuilderArrowRotateMove);
+    document.removeEventListener('mouseup', onBuilderArrowRotateEnd);
+    calculatePageBreaks();
+  }
+
+  // +/- Ligne (élément "lignes de réponse") -- même principe qu'adjustLines()
+  // pour une question ESSAY normale, scopé à cet élément du canevas.
+  function adjustBuilderLines(btn, change) {
+    const container = btn.closest('.builder-element').querySelector('.essay-lines-container');
+    const canvas = btn.closest('.builder-canvas');
+    if (change > 0) {
+      const newLine = document.createElement('div');
+      newLine.className = 'essay-line';
+      container.appendChild(newLine);
+    } else if (change < 0 && container.children.length > 1) {
+      container.removeChild(container.lastElementChild);
+    }
+    resizeBuilderCanvasToFitContent(canvas);
+    calculatePageBreaks();
+  }
+
+  // +/- Ligne et +/- Colonne (élément "tableau") -- généralise adjustMatchingRows()
+  // à un nombre de colonnes variable (pas seulement 2 : terme/définition).
+  function adjustBuilderTableRows(btn, change) {
+    const table = btn.closest('.builder-element').querySelector('.builder-table');
+    const canvas = btn.closest('.builder-canvas');
+    const tbody = table.tBodies[0] || table;
+    if (change > 0) {
+      const colCount = tbody.rows[0] ? tbody.rows[0].cells.length : 2;
+      const tr = document.createElement('tr');
+      for (let i = 0; i < colCount; i++) {
+        const td = document.createElement('td');
+        td.className = 'editable';
+        td.contentEditable = 'true';
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    } else if (change < 0 && tbody.rows.length > 1) {
+      tbody.removeChild(tbody.rows[tbody.rows.length - 1]);
+    }
+    resizeBuilderCanvasToFitContent(canvas);
+    calculatePageBreaks();
+  }
+  function adjustBuilderTableCols(btn, change) {
+    const table = btn.closest('.builder-element').querySelector('.builder-table');
+    const canvas = btn.closest('.builder-canvas');
+    const tbody = table.tBodies[0] || table;
+    const rows = Array.from(tbody.rows);
+    if (change > 0) {
+      rows.forEach(tr => {
+        const td = document.createElement('td');
+        td.className = 'editable';
+        td.contentEditable = 'true';
+        tr.appendChild(td);
+      });
+    } else if (change < 0 && rows.length > 0 && rows[0].cells.length > 1) {
+      rows.forEach(tr => tr.removeChild(tr.lastElementChild));
+    }
+    resizeBuilderCanvasToFitContent(canvas);
+    calculatePageBreaks();
+  }
+
+  // Relit l'état COMPLET d'un élément directement depuis le DOM (position,
+  // taille, contenu) -- réutilisée à la fois par duplicateQuestion() (copie
+  // immédiate) et exportSettings() (sérialisation JSON), jamais un tableau JS
+  // séparé à garder synchronisé.
+  function serializeBuilderElement(el) {
+    const kind = el.dataset.kind;
+    const data = {
+      kind,
+      x: parseFloat(el.style.left) || 0,
+      y: parseFloat(el.style.top) || 0,
+      width: parseFloat(el.style.width) || null,
+    };
+    if (kind === 'text' || kind === 'number') {
+      const textEl = el.querySelector('.builder-text');
+      data.text = textEl ? textEl.innerText : '';
+    } else if (kind === 'lines') {
+      data.lines = el.querySelectorAll('.essay-line').length;
+    } else if (kind === 'table') {
+      data.rows = Array.from(el.querySelectorAll('.builder-table tr')).map(tr =>
+        Array.from(tr.querySelectorAll('td')).map(td => td.innerText)
+      );
+    } else if (kind === 'image') {
+      data.height = parseFloat(el.style.height) || null;
+      const img = el.querySelector('.builder-image-body img');
+      data.imageDataUrl = img ? img.getAttribute('src') : null;
+    } else if (kind === 'arrow') {
+      data.rotation = parseFloat(el.dataset.rotation) || 0;
+    }
+    return data;
+  }
+  function serializeBuilderCanvas(canvas) {
+    return Array.from(canvas.querySelectorAll(':scope > .builder-element')).map(serializeBuilderElement);
+  }
+
+  function addQuestion(secId, type, qData = null) {
+    const sec = document.getElementById(secId);
+    if (!sec) return;
+    const qList = sec.querySelector('.questions-list');
+    const qStyle = sec.dataset.qStyle || 'q-border-none';
+
+    const actualType = normalizeQuestionType(type);
+
+    const qEl = document.createElement('div');
+    qEl.className = `question-item ${qStyle}`;
+    qEl.dataset.type = actualType;
+
+    const textPrompt = (qData && qData.prompt) ? qData.prompt : 'Énoncé de la question ici...';
+    const pts = (qData && qData.points !== undefined && qData.points !== null) ? qData.points : 1;
+    const bodyHTML = (actualType === 'BUILDER') ? builderCanvasHTML(qData) : buildAnswerBodyHTML(actualType, qData);
 
     // [stated] : "je ne veux pas de l'icône image dans le titre des
     // questions, mais qu'on utilise le drag/drop de la section 'Image'" --
@@ -5445,7 +6289,7 @@
     // exporté avec une image imbriquée sous une question (qData.questionImage,
     // voir plus bas) doit continuer à s'afficher correctement à l'import,
     // avec sa propre pastille ✕ pour la retirer (voir imageBlockInnerHTML()).
-    const imageSlotHTML = type === 'IMAGE' ? '' : `<div class="q-image-slot" data-active="0"></div>`;
+    const imageSlotHTML = actualType === 'IMAGE' ? '' : `<div class="q-image-slot" data-active="0"></div>`;
 
     qEl.innerHTML = `
       <div class="q-head">
@@ -5462,11 +6306,16 @@
     qList.appendChild(qEl);
     enableDragAndDropForElement(qEl, 'QUESTION');
 
-    if (type === 'QCM') renumberQcmOptions(qEl.querySelector('.qcm-options'));
+    if (actualType === 'QCM') renumberQcmOptions(qEl.querySelector('.qcm-options'));
 
-    if (type === 'TF' && qData && qData.justification && qData.justification !== 'none') {
+    if (actualType === 'TF' && qData && qData.justification && qData.justification !== 'none') {
       const select = qEl.querySelector('.tf-select');
       updateJustification(select);
+    }
+
+    if (actualType === 'BUILDER') {
+      const canvas = qEl.querySelector('.builder-canvas');
+      if (canvas) resizeBuilderCanvasToFitContent(canvas);
     }
 
     if (qData && qData.questionImage && qData.questionImage.dataUrl) {
@@ -5478,6 +6327,57 @@
 
     reorderAllQuestions();
     recalculateTotals();
+  }
+
+  // [stated] (2026-09) : "il faut pouvoir faire un double de la question
+  // 'home made'" -- copie l'énoncé, le barème ET le contenu détaillé du
+  // format actuel (choix QCM, justification Vrai/Faux, nombre de lignes,
+  // paires d'association, ou -- pour une question BUILDER -- la position/
+  // taille/contenu de CHAQUE élément du canevas via serializeBuilderCanvas())
+  // dans une nouvelle question, insérée juste après l'originale plutôt qu'en
+  // fin de section (addQuestion() ajoute toujours à la fin ; on la
+  // repositionne ensuite). Générique par type (pas seulement BUILDER), mais
+  // exposée pour l'instant uniquement via le bouton "⧉ Dupliquer" du canevas
+  // Question Builder (voir builderCanvasHTML()).
+  function duplicateQuestion(btn) {
+    const qEl = btn.closest('.question-item');
+    const sec = qEl ? qEl.closest('.section-block') : null;
+    if (!qEl || !sec) return;
+
+    const type = qEl.dataset.type;
+    const promptEl = qEl.querySelector('.q-prompt');
+    const ptsEl = qEl.querySelector('.q-pts-editable');
+    const qData = {
+      type: type,
+      prompt: promptEl ? promptEl.innerText : '',
+      points: parseFloat(ptsEl ? ptsEl.textContent : '') || 0
+    };
+
+    if (type === 'QCM') {
+      qData.options = Array.from(qEl.querySelectorAll('.qcm-options .editable')).map(el => el.innerText);
+    } else if (type === 'TF') {
+      const sel = qEl.querySelector('.tf-select');
+      qData.justification = sel ? sel.value : 'none';
+    } else if (type === 'ESSAY') {
+      qData.lines = qEl.querySelectorAll('.essay-lines-container .essay-line').length;
+    } else if (type === 'MATCHING') {
+      const matchingData = readMatchingRows(qEl);
+      qData.rows = matchingData.rows;
+      qData.colGroups = matchingData.colGroups;
+    } else if (type === 'BUILDER') {
+      const canvas = qEl.querySelector('.builder-canvas');
+      if (canvas) {
+        qData.elements = serializeBuilderCanvas(canvas);
+        if (canvas.dataset.manualHeight) qData.canvasHeight = parseFloat(canvas.dataset.manualHeight);
+      }
+    }
+
+    const qList = qEl.parentElement;
+    addQuestion(sec.id, type, qData);
+    const newQEl = qList.lastElementChild;
+    if (newQEl && newQEl !== qEl) qList.insertBefore(newQEl, qEl.nextSibling);
+    reorderAllQuestions();
+    calculatePageBreaks();
   }
 
   // Chaque ligne de choix a désormais sa PROPRE pastille "+" (à côté de sa
@@ -5515,16 +6415,64 @@
     calculatePageBreaks();
   }
 
+  // Génère UN groupe de cellules (terme éditable + case-réponse + définition
+  // éditable) pour une ligne du tableau d'association -- factorisé pour être
+  // réutilisé identiquement par le rendu initial (buildAnswerBodyHTML),
+  // adjustMatchingRows() (nouvelle ligne = colGroups groupes vides) et
+  // adjustMatchingCols() (nouveau groupe ajouté à chaque ligne existante).
+  function matchingRowCellsHTML(pair) {
+    return `
+      <td class="editable" contenteditable="true">${escapeHtml(pair ? pair.term : '')}</td>
+      <td style="width:50px; text-align:center;">[ &nbsp; ]</td>
+      <td class="editable" contenteditable="true">${escapeHtml(pair ? pair.def : '')}</td>`;
+  }
+  // En-tête du tableau d'association : un seul groupe garde les libellés
+  // "nus" (Terme/Lettre/Définition, comme avant l'ajout des colonnes, pour ne
+  // rien changer visuellement à un examen existant) ; dès qu'il y a plus d'un
+  // groupe, chacun est numéroté pour que l'enseignant sache quel Terme va
+  // avec quelle Définition.
+  function matchingHeaderCellsHTML(colGroups) {
+    let cells = '';
+    for (let g = 0; g < colGroups; g++) {
+      const suffix = colGroups > 1 ? ` ${g + 1}` : '';
+      cells += `<th>Terme${suffix}</th><th>Lettre${suffix}</th><th>Définition${suffix}</th>`;
+    }
+    return cells;
+  }
+  // Relit l'état complet du tableau d'association directement depuis le DOM
+  // (comme serializeBuilderCanvas() pour le Question Builder) -- utilisée par
+  // duplicateQuestion(), exportSettings() et l'export Excel pour ne jamais
+  // dupliquer 3 fois la même logique de lecture des groupes Terme/Définition.
+  function readMatchingRows(qEl) {
+    const table = qEl.querySelector('.matching-table');
+    if (!table) return { rows: [], colGroups: 1 };
+    const colGroups = parseInt(table.dataset.colGroups) || 1;
+    const rows = Array.from(table.querySelectorAll('tr')).slice(1).map(tr => {
+      const tds = tr.querySelectorAll('.editable');
+      const pairs = [];
+      for (let g = 0; g < colGroups; g++) {
+        pairs.push({
+          term: tds[g * 2] ? tds[g * 2].innerText : '',
+          def: tds[g * 2 + 1] ? tds[g * 2 + 1].innerText : ''
+        });
+      }
+      return { pairs };
+    });
+    return { rows, colGroups };
+  }
+
   // [stated] "il faut pouvoir ajouter des lignes de choix d'association pour
   // les questions du type Association" -- même principe que + Ligne/- Ligne
   // pour Réponse Courte/Développement (adjustLines() ci-dessus), mais sur les
   // <tr> de .matching-table plutôt que sur des .essay-line : on ajoute/retire
-  // une ligne (terme éditable + case-réponse vide + définition éditable),
+  // une ligne (autant de groupes Terme/case-réponse/Définition que
+  // data-col-groups sur la table, voir adjustMatchingCols() juste après),
   // toujours après la ligne d'en-tête (<tr> des <th>, jamais retirée), avec un
   // minimum d'une seule ligne de contenu.
   function adjustMatchingRows(btn, change) {
     const table = btn.closest('.question-item').querySelector('.matching-table');
     if (!table) return;
+    const colGroups = parseInt(table.dataset.colGroups) || 1;
     // BUG ÉVITÉ : le HTML initial (voir plus haut) laisse le navigateur
     // envelopper ses <tr> dans un <tbody> IMPLICITE (créé par le parser) --
     // `table.appendChild(tr)` insérerait le nouveau <tr> comme enfant DIRECT
@@ -5538,15 +6486,44 @@
     // conteneur direct) pour retirer -- jamais `lastElementChild`.
     if (change > 0) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td class="editable" contenteditable="true"></td>
-        <td style="width:50px; text-align:center;">[ &nbsp; ]</td>
-        <td class="editable" contenteditable="true"></td>
-      `;
+      let cells = '';
+      for (let g = 0; g < colGroups; g++) cells += matchingRowCellsHTML(null);
+      tr.innerHTML = cells;
       (table.tBodies[0] || table).appendChild(tr);
     } else if (change < 0 && table.rows.length > 2) {
       const lastRow = table.rows[table.rows.length - 1];
       lastRow.parentNode.removeChild(lastRow);
+    }
+    calculatePageBreaks();
+  }
+
+  // [stated] (2026-09) : "pour le tableau de question d'association, il faut
+  // pouvoir ajouter des colonnes" -- ajoute/retire un GROUPE Terme/Lettre/
+  // Définition ENTIER (3 cellules) sur l'en-tête ET sur chaque ligne
+  // existante, jamais une colonne isolée : le mécanisme d'association
+  // (case-réponse vide entre les deux) a toujours besoin de ses deux bornes
+  // Terme+Définition ensemble. Minimum 1 groupe. `table.dataset.colGroups`
+  // est la source de vérité relue par matchingRowCellsHTML()/
+  // adjustMatchingRows()/readMatchingRows() -- toujours mise à jour ici en
+  // dernier, une fois le DOM effectivement modifié.
+  function adjustMatchingCols(btn, change) {
+    const table = btn.closest('.question-item').querySelector('.matching-table');
+    if (!table) return;
+    const colGroups = parseInt(table.dataset.colGroups) || 1;
+    const headerRow = table.rows[0];
+    const dataRows = Array.from(table.rows).slice(1);
+    if (change > 0) {
+      const newColGroups = colGroups + 1;
+      headerRow.innerHTML = matchingHeaderCellsHTML(newColGroups);
+      dataRows.forEach(tr => tr.insertAdjacentHTML('beforeend', matchingRowCellsHTML(null)));
+      table.dataset.colGroups = newColGroups;
+    } else if (change < 0 && colGroups > 1) {
+      const newColGroups = colGroups - 1;
+      headerRow.innerHTML = matchingHeaderCellsHTML(newColGroups);
+      dataRows.forEach(tr => {
+        for (let i = 0; i < 3; i++) if (tr.lastElementChild) tr.removeChild(tr.lastElementChild);
+      });
+      table.dataset.colGroups = newColGroups;
     }
     calculatePageBreaks();
   }
@@ -5747,16 +6724,20 @@
       return;
     }
     let rowsData = [];
+    // Compteur d'images retirées d'une question BUILDER pour tenir sous la
+    // limite de taille d'une cellule .xlsx (voir plus bas) -- déclaré ici,
+    // avant le if/else, pour rester lisible après la boucle d'export.
+    let builderImagesStripped = 0;
 
     if (isSampleBank) {
       rowsData = [
         ["Categorie", "Section", "Type", "Enonce", "Points", "Option1", "Option2", "Option3", "Option4", "Option5", "Option6", "Parametre"],
         ["Botanique", "SECTION 1 : Choix Multiples", "QCM", "Quel est le pigment principal responsable de la photosynthèse ?", 2, "Chlorophylle a", "Carotène", "Xanthophylle", "Anthocyane", "Phycocyanine", "", ""],
-        ["Botanique", "SECTION 3 : Réponses courtes", "SHORT", "Décrivez brièvement le rôle des stomates chez les plantes.", 2, "", "", "", "", "", "", "3"],
+        ["Botanique", "SECTION 3 : Réponse écrite", "ESSAY", "Décrivez brièvement le rôle des stomates chez les plantes.", 2, "", "", "", "", "", "", "3"],
         ["Zoologie", "SECTION 1 : Choix Multiples", "QCM", "Lequel de ces animaux est un vertébré ?", 1, "Incroyable pieuvre", "Grenouille", "Éponge marine", "Étoile de mer", "", "", ""],
         ["Zoologie", "SECTION 2 : Vrai ou Faux", "TF", "Les insectes possèdent un squelette interne cartilagineux.", 1, "", "", "", "", "", "", "false"],
         ["Génétique", "SECTION 1 : Choix Multiples", "QCM", "Quelles sont les quatre bases azotées de l'ADN ?", 2.5, "A, T, C, G", "A, U, C, G", "A, T, C, U", "A, B, C, D", "X, Y, Z, W", "Aucune de ces réponses", ""],
-        ["Génétique", "SECTION 4 : Développement", "ESSAY", "Expliquez la deuxième loi de Mendel sur la ségrégation indépendante.", 5, "", "", "", "", "", "", "6"],
+        ["Génétique", "SECTION 4 : Réponse écrite", "ESSAY", "Expliquez la deuxième loi de Mendel sur la ségrégation indépendante.", 5, "", "", "", "", "", "", "6"],
         ["Génétique", "SECTION 5 : Association", "MATCHING", "Associez chaque terme à sa définition.", 3, "", "", "", "", "", "", "Génotype::Ensemble des gènes d'un individu;;Phénotype::Expression observable des gènes;;Allèle::Variante d'un gène"]
       ];
     } else {
@@ -5787,10 +6768,13 @@
           sec.querySelectorAll('.question-item').forEach(q => {
             const type = q.dataset.type;
             // BUG ÉVITÉ : un item Image (voir addImageItem()) n'a ni énoncé
-            // ni barème -- le format Excel (banque de QUESTIONS textuelles)
-            // ne sait pas représenter une image ; on l'exclut donc de cet
-            // export plutôt que d'écrire une ligne vide/absurde. L'export
-            // JSON ("Exporter tout l'examen"), lui, la conserve fidèlement.
+            // ni barème -- le format Excel (banque de QUESTIONS textuelles,
+            // colonnes Enoncé/Points) ne saurait pas quoi y mettre ; on
+            // l'exclut donc de cet export plutôt que d'écrire une ligne
+            // vide/absurde. BUILDER, lui, a bien un énoncé et un barème
+            // normaux (voir plus bas pour l'encodage de son contenu).
+            // L'export JSON ("Exporter tout l'examen") conserve IMAGE
+            // fidèlement dans tous les cas.
             if (type === 'IMAGE') return;
             const promptEl = q.querySelector('.q-prompt');
             const prompt = promptEl ? promptEl.innerText.trim() : '';
@@ -5808,14 +6792,45 @@
             } else if (type === 'TF') {
               const sel = q.querySelector('.tf-select');
               param = sel ? sel.value : 'none';
-            } else if (type === 'SHORT' || type === 'ESSAY') {
+            } else if (type === 'ESSAY') {
+              // q.dataset.type est toujours normalisé (jamais 'SHORT') --
+              // voir normalizeQuestionType(), appelée au point d'entrée
+              // unique de création d'une question (addQuestion()).
               param = q.querySelectorAll('.essay-lines-container .essay-line').length;
             } else if (type === 'MATCHING') {
-              const pairs = Array.from(q.querySelectorAll('.matching-table tr')).slice(1).map(tr => {
-                const tds = tr.querySelectorAll('.editable');
-                return `${(tds[0] ? tds[0].innerText.trim() : '')}::${(tds[1] ? tds[1].innerText.trim() : '')}`;
-              });
-              param = pairs.join(';;');
+              // Encodage étendu (2026-09, colonnes Terme/Définition
+              // supplémentaires) : chaque ligne peut contenir PLUSIEURS
+              // paires terme::définition, jointes par "||" ; les lignes
+              // restent jointes par ";;" comme avant. Une question à 1 seul
+              // groupe (l'immense majorité, et tout examen créé avant cette
+              // version) ne contient jamais de "||" -- l'ancien format et son
+              // import restent donc lisibles à l'identique.
+              const matchingData = readMatchingRows(q);
+              param = matchingData.rows.map(r =>
+                r.pairs.map(p => `${p.term.trim()}::${p.def.trim()}`).join('||')
+              ).join(';;');
+            } else if (type === 'BUILDER') {
+              const canvas = q.querySelector('.builder-canvas');
+              const elements = canvas ? serializeBuilderCanvas(canvas) : [];
+              const canvasHeight = (canvas && canvas.dataset.manualHeight) ? parseFloat(canvas.dataset.manualHeight) : null;
+              let payload = { elements, canvasHeight };
+              param = JSON.stringify(payload);
+              // GARDE-FOU : une cellule .xlsx a une limite de ~32767
+              // caractères -- une image encodée en base64 dans un élément
+              // "Image" du Builder peut à elle seule dépasser cette limite
+              // (dépasserait silencieusement/corromprait le fichier sans ce
+              // contrôle). On retire alors les images de CETTE question pour
+              // l'export Excel uniquement (le contenu reste intact dans le
+              // document courant, et "Exporter tout l'examen" en JSON les
+              // conserve toujours) et on prévient une fois en fin d'export.
+              if (param.length > 30000) {
+                const strippedCount = payload.elements.filter(el => el.kind === 'image' && el.imageDataUrl).length;
+                if (strippedCount > 0) {
+                  payload = { elements: payload.elements.map(el => el.kind === 'image' ? { ...el, imageDataUrl: null } : el), canvasHeight: payload.canvasHeight };
+                  param = JSON.stringify(payload);
+                  builderImagesStripped += strippedCount;
+                }
+              }
             }
 
             for (let i = 0; i < maxOpts; i++) {
@@ -5834,6 +6849,13 @@
     XLSX.utils.book_append_sheet(wb, ws, "Banque_Questions");
     const fileData = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
     offerDownload(isSampleBank ? "banque_questions_categories.xlsx" : "export_questions_examen.xlsx", fileData);
+
+    if (builderImagesStripped > 0) {
+      showInlineNotice(
+        `${builderImagesStripped} image(s) dans des questions Question Builder n'ont pas pu être incluses dans cet export Excel (limite de taille d'une cellule) -- utilisez "Exporter tout l'examen" (JSON) pour les conserver.`,
+        true
+      );
+    }
   }
 
   function importExcelQuestions(event) {
@@ -5936,13 +6958,39 @@
         } else if (type === 'SHORT' || type === 'ESSAY') {
           qData.lines = (paramIdx !== -1 && row[paramIdx]) ? parseInt(row[paramIdx]) || 3 : 3;
         } else if (type === 'MATCHING') {
+          // Lit le format étendu "terme::def||terme2::def2;;terme::def..."
+          // (colonnes Terme/Définition supplémentaires, 2026-09) -- un ancien
+          // fichier sans "||" retombe naturellement sur un seul groupe par
+          // ligne, exactement comme avant.
           const raw = (paramIdx !== -1 && row[paramIdx]) ? String(row[paramIdx]) : '';
-          qData.rows = raw.split(';;').filter(Boolean).map(pairStr => {
-            const parts = pairStr.split('::');
-            return { term: (parts[0] || '').trim(), def: (parts[1] || '').trim() };
+          qData.rows = raw.split(';;').filter(Boolean).map(rowStr => {
+            const pairs = rowStr.split('||').map(pairStr => {
+              const parts = pairStr.split('::');
+              return { term: (parts[0] || '').trim(), def: (parts[1] || '').trim() };
+            });
+            return { pairs };
           });
+          qData.colGroups = qData.rows.length ? qData.rows[0].pairs.length : 1;
           if (qData.rows.length === 0) {
-            qData.rows = [{ term: '1. Élément A', def: 'A. Définition A' }, { term: '2. Élément B', def: 'B. Définition B' }];
+            qData.rows = [{ pairs: [{ term: '1. Élément A', def: 'A. Définition A' }] }, { pairs: [{ term: '2. Élément B', def: 'B. Définition B' }] }];
+            qData.colGroups = 1;
+          }
+        } else if (type === 'BUILDER') {
+          // Lit le JSON encodé par downloadExcelTemplate() ({elements,
+          // canvasHeight}) -- si le fichier a été modifié à la main et que
+          // le JSON est invalide, on retombe sur une question Builder vide
+          // (un seul élément "lignes" par défaut, comme une toute nouvelle
+          // question) plutôt que de faire échouer tout l'import.
+          const raw = (paramIdx !== -1 && row[paramIdx]) ? String(row[paramIdx]) : '';
+          try {
+            const payload = JSON.parse(raw);
+            if (payload && Array.isArray(payload.elements)) {
+              qData.elements = payload.elements;
+              if (typeof payload.canvasHeight === 'number') qData.canvasHeight = payload.canvasHeight;
+            }
+          } catch (e) {
+            // qData.elements reste undefined -> builderCanvasHTML() posera
+            // son propre élément par défaut, comme pour une section vierge.
           }
         }
 
@@ -6079,19 +7127,30 @@
             prompt: promptEl ? promptEl.innerText : '',
             points: parseFloat(ptsEl ? ptsEl.textContent : '') || 0
           };
-
           if (type === 'QCM') {
             qData.options = Array.from(q.querySelectorAll('.qcm-options .editable')).map(opt => opt.innerText);
           } else if (type === 'TF') {
             const sel = q.querySelector('.tf-select');
             qData.justification = sel ? sel.value : 'none';
-          } else if (type === 'SHORT' || type === 'ESSAY') {
+          } else if (type === 'ESSAY') {
+            // q.dataset.type est toujours normalisé (jamais 'SHORT') -- voir
+            // normalizeQuestionType(), appelée dans addQuestion().
             qData.lines = q.querySelectorAll('.essay-lines-container .essay-line').length;
           } else if (type === 'MATCHING') {
-            qData.rows = Array.from(q.querySelectorAll('.matching-table tr')).slice(1).map(tr => {
-              const tds = tr.querySelectorAll('.editable');
-              return { term: tds[0] ? tds[0].innerText : '', def: tds[1] ? tds[1].innerText : '' };
-            });
+            const matchingData = readMatchingRows(q);
+            qData.rows = matchingData.rows;
+            qData.colGroups = matchingData.colGroups;
+          } else if (type === 'BUILDER') {
+            // Question Builder (2026-09) : chaque élément du canevas
+            // (position, taille, contenu) est resérialisé tel quel -- voir
+            // serializeBuilderCanvas()/serializeBuilderElement(), la même
+            // fonction que duplicateQuestion() pour ne jamais désynchroniser
+            // les deux.
+            const canvas = q.querySelector('.builder-canvas');
+            if (canvas) {
+              qData.elements = serializeBuilderCanvas(canvas);
+              if (canvas.dataset.manualHeight) qData.canvasHeight = parseFloat(canvas.dataset.manualHeight);
+            }
           } else if (type === 'IMAGE') {
             // [stated] item Image : ni énoncé ni barème (voir addImageItem()) --
             // seule l'image elle-même (en base64) et sa légende comptent.
