@@ -1083,6 +1083,28 @@
   }
   .icon-delete-btn:hover { background: #fed7d7; color: #c53030; }
 
+  /* BUG CORRIGÉ (2026-09) : "impossible de supprimer Sujet 1 / SECTION 1
+     dans le modèle par défaut" -- en Mode Basique, .block-toolbar est
+     entièrement masqué (body.basic-mode .block-toolbar plus haut), ce qui
+     cachait AUSSI le bouton ✕ de suppression pour les bannières de sujet,
+     sections, sauts de page, zones de texte et blocs image, puisqu'il vivait
+     jusqu'ici À L'INTÉRIEUR de cette barre d'outils avec les réglages de
+     style (censés être les seuls masqués). Supprimer un bloc n'est pas une
+     option avancée -- le bouton ✕ de ces 5 types de blocs est donc sorti de
+     .block-toolbar et repositionné en coin du bloc (même principe que
+     .builder-element .icon-delete-btn plus bas), ce qui le garde visible
+     dans les deux modes et le rend au passage plus visible qu'avant. */
+  .topic-separator-block > .icon-delete-btn,
+  .section-block > .icon-delete-btn,
+  .page-separator-block > .icon-delete-btn,
+  .text-block-block > .icon-delete-btn,
+  .image-block-block > .icon-delete-btn {
+    position: absolute;
+    top: -11px;
+    right: -11px;
+    z-index: 7;
+  }
+
   /* Pastille "encadré" (Zone de texte) — même style que .icon-delete-btn,
      avec un état "actif" (encadré activé) mis en évidence en bleu. */
   .icon-toggle-btn {
@@ -1397,6 +1419,26 @@
     text-align: center; font-size: 11px; color: #718096; border: 1px dashed #cbd5e0; border-radius: 4px; cursor: pointer;
   }
   .builder-image-drop.dragover { background: #ebf4ff; border-color: #90b4d9; }
+  /* Trait droit (2026-09) : "lignes continues [...] ajuster leur longueur"
+     -- distinct de .essay-line (lignes de réponse à écrire) : un simple
+     trait fin posé en bas de l'élément, comme un blanc à compléter
+     ("a) ______"). Largeur = 100% de l'élément, ajustée par
+     .builder-resize-w comme texte/tableau/flèche. */
+  /* BUG CORRIGÉ (2026-09) : "la première apparition montre une ligne d'une
+     certaine épaisseur, mais les ajouts suivants ont des traits plus
+     minces" -- confirmé réel (pas juste une impression) : le mode "Petite"
+     (par défaut) applique un zoom CSS de 0.85 à .sections-container, et un
+     trait de 2px positionné à des hauteurs différentes en cascade tombe à
+     des sous-pixels différents une fois ce zoom appliqué (2px*0.85=1.7px,
+     dont la fraction exacte au-dessus du pixel physique varie selon la
+     position verticale) -- chaque exemplaire s'anticrénèle donc différemment
+     (parfois quasi plein, parfois très clair). Vérifié en isolant plusieurs
+     approches (hauteur seule, border-bottom, hauteur plus grande...) : le
+     box-shadow ci-dessous (léger halo de la même couleur tout autour) est
+     ce qui rend le mieux -- il ajoute une marge de couverture qui absorbe
+     l'arrondi du sous-pixel, donnant un trait plein et visuellement
+     identique quelle que soit sa position. */
+  .builder-line-shaft { position: absolute; left: 0; right: 0; bottom: 2px; height: 2px; background: #1a202c; box-shadow: 0 0 0 0.5px #1a202c; }
   /* Flèche (2026-09) : hampe (trait) + pointe (triangle CSS pur, pas de SVG
      ni d'image -- s'imprime nettement à n'importe quelle résolution). La
      hampe est en flex:1 pour occuper toute la largeur ajustée par
@@ -5050,8 +5092,8 @@
             <option value="bg-white" ${customStyle === 'bg-white' ? 'selected' : ''}>Blanc (sans fond)</option>
           </select>
         </label>
-        <button class="icon-delete-btn" title="Supprimer le séparateur" onclick="document.getElementById('${topicId}').remove(); calculatePageBreaks();">✕</button>
       </div>
+      <button class="icon-delete-btn ui-only" title="Supprimer le séparateur" onclick="document.getElementById('${topicId}').remove(); calculatePageBreaks();">✕</button>
       <div class="topic-banner ${customStyle}">
         <span class="editable topic-text" contenteditable="true" title="Glisser pour déplacer le séparateur de sujet / thème" onmousedown="startTitleDrag(event, this.closest('.topic-separator-block'))">${escapeHtml(bannerTitle)}</span>
       </div>
@@ -5085,9 +5127,7 @@
     el.className = 'page-separator-block section-separator';
     el.id = sepId;
     el.innerHTML = `
-      <div class="block-toolbar ui-only">
-        <button class="icon-delete-btn" title="Supprimer le saut de page" onclick="document.getElementById('${sepId}').remove(); calculatePageBreaks();">✕</button>
-      </div>
+      <button class="icon-delete-btn ui-only" title="Supprimer le saut de page" onclick="document.getElementById('${sepId}').remove(); calculatePageBreaks();">✕</button>
       <div class="page-separator-line">
         <span class="page-separator-caption ui-only" title="Glisser pour déplacer le saut de page">↧ Saut de page forcé</span>
       </div>
@@ -5128,8 +5168,8 @@
       <span class="block-drag-handle ui-only" title="Glisser pour déplacer la zone de texte">⠿</span>
       <div class="block-toolbar ui-only">
         <button class="icon-toggle-btn${framed ? ' active' : ''}" title="Afficher un encadré autour de la zone de texte (visible à l'impression)" onclick="toggleTextBlockFrame('${blockId}', this)">⬚</button>
-        <button class="icon-delete-btn" title="Supprimer la zone de texte" onclick="document.getElementById('${blockId}').remove(); calculatePageBreaks();">✕</button>
       </div>
+      <button class="icon-delete-btn ui-only" title="Supprimer la zone de texte" onclick="document.getElementById('${blockId}').remove(); calculatePageBreaks();">✕</button>
       <div class="editable free-text-content" contenteditable="true">${escapeHtml(content)}</div>
     `;
     enableDragAndDropForElement(el, 'BLOCK');
@@ -5205,8 +5245,8 @@
                  onchange="updateImageBlockSize('${blockId}', this.value)">
           <span class="image-block-size-value">${existingWidthPct}%</span>
         </label>
-        <button class="icon-delete-btn" title="${deleteTitle}" onclick="${deleteAction}">✕</button>
       </div>
+      <button class="icon-delete-btn ui-only" title="${deleteTitle}" onclick="${deleteAction}">✕</button>
       <div class="image-block-body"></div>
       <div class="editable image-block-caption" contenteditable="true">${escapeHtml(existingCaption || '')}</div>
       <input type="file" class="image-block-input" accept="image/*" style="display:none;" onchange="handleImageBlockFile(event, '${blockId}')">
@@ -5416,8 +5456,8 @@
             <option value="q-border-none" ${qStyle === 'q-border-none' ? 'selected' : ''}>Aucune</option>
           </select>
         </label>
-        <button class="icon-delete-btn" title="Supprimer la section" onclick="removeSection('${sectionId}')">✕</button>
       </div>
+      <button class="icon-delete-btn ui-only" title="Supprimer la section" onclick="removeSection('${sectionId}')">✕</button>
 
       <div class="section-header">
         <span class="editable sec-title" contenteditable="true" title="Glisser pour déplacer la section" onmousedown="startTitleDrag(event, this.closest('.section-block'))">${escapeHtml(sectionTitle)}</span>
@@ -5741,6 +5781,20 @@
         </div>
         <div class="essay-lines-container">${linesHTML}</div>`;
       resizeHandleHTML = `<div class="builder-resize-w ui-only" title="Glisser pour ajuster la largeur" onmousedown="event.stopPropagation(); startBuilderElementResize(event, this, 'w');"></div>`;
+    } else if (kind === 'line') {
+      // [stated] (2026-09) : "des lignes continues [...] qu'on puisse
+      // ajuster leur longueur" -- un simple trait droit (à distinguer de
+      // "lignes" ci-dessus, qui sont plusieurs lignes de réponse pour
+      // écrire) : sert typiquement à pointer/légender un schéma ("a)
+      // ______"). Même poignée de longueur que texte/tableau/flèche
+      // (aucune rotation ici -- non demandée pour ce type, contrairement à
+      // la flèche). Voir addBuilderLineWithLabel() : ajouté généralement en
+      // paire avec un élément "number" (lettre), mais reste un élément
+      // ordinaire indépendant comme les autres (glissable/supprimable seul).
+      const width = elData.width || 120;
+      styleParts.push(`width:${width}px`, `height:20px`);
+      innerHTML = `<div class="builder-line-shaft"></div>`;
+      resizeHandleHTML = `<div class="builder-resize-w ui-only" title="Glisser pour ajuster la longueur" onmousedown="event.stopPropagation(); startBuilderElementResize(event, this, 'w');"></div>`;
     } else if (kind === 'arrow') {
       // [stated] (2026-09) : "il faudrait aussi pouvoir ajouter des
       // flèches" -- "les flèches sont des ajouts de la même façon qu'on peut
@@ -5811,6 +5865,18 @@
       resizeHandleHTML = `<div class="builder-resize-corner ui-only" title="Glisser pour redimensionner" onmousedown="event.stopPropagation(); startBuilderElementResize(event, this, 'both');"></div>`;
     }
 
+    // [stated] (2026-09) : "la lettre soit associée au trait" -- attribut
+    // générique (pas propre au type 'line'/'number', réutilisable pour
+    // d'autres paires futures) posé sur les deux éléments d'une paire créée
+    // par addBuilderLineWithLabel() ; voir startBuilderElementDrag()/
+    // onBuilderElementDragMove() plus bas, qui déplacent ensemble tous les
+    // éléments du MÊME canevas partageant ce data-pair-id. Chacun reste par
+    // ailleurs un élément ordinaire indépendant (redimensionnable/
+    // supprimable seul, comme avant) -- seul le déplacement est groupé.
+    if (elData.pairId) {
+      extraAttrs += ` data-pair-id="${elData.pairId}"`;
+    }
+
     return `
       <div class="builder-element" data-kind="${kind}"${extraAttrs} style="${styleParts.join('; ')}" onmousedown="startBuilderElementDrag(event, this)">
         <button class="icon-delete-btn ui-only" title="Supprimer cet élément" onmousedown="event.stopPropagation()" onclick="removeBuilderElement(this)">✕</button>
@@ -5837,6 +5903,7 @@
         <button class="btn-action" onclick="addBuilderElement(this, 'text')">+ Texte</button>
         <button class="btn-action" onclick="addBuilderElement(this, 'lines')">+ Lignes</button>
         <button class="btn-action" onclick="addBuilderElement(this, 'number')">+ Numéro</button>
+        <button class="btn-action" title="Ajoute un trait droit (longueur ajustable) avec une lettre associée -- pour légender un schéma" onclick="addBuilderLineWithLabel(this)">+ Trait + lettre</button>
         <button class="btn-action" onclick="addBuilderElement(this, 'arrow')">+ Flèche</button>
         <button class="btn-action" onclick="addBuilderElement(this, 'image')">+ Image</button>
         <button class="btn-action" onclick="addBuilderElement(this, 'table')">+ Tableau</button>
@@ -5859,6 +5926,40 @@
     const count = canvas.querySelectorAll(':scope > .builder-element').length;
     const cascade = (count % 6) * 16;
     canvas.insertAdjacentHTML('beforeend', builderElementHTML({ kind, x: 10 + cascade, y: 10 + cascade }));
+    resizeBuilderCanvasToFitContent(canvas);
+    calculatePageBreaks();
+  }
+
+  // [stated] (2026-09) : "qu'on puisse ajouter des lignes continues, qu'on
+  // puisse ajuster leurs longueurs, et qu'on puisse ajouter des lettres
+  // associées à ces lignes" -- typiquement pour légender un schéma (une
+  // lettre + un trait pointant vers une partie à identifier, l'élève
+  // écrivant sa réponse ailleurs). Plutôt qu'un nouveau type d'élément
+  // composite (aurait cassé le principe "le DOM est la source de vérité, un
+  // élément = une entrée de serializeBuilderElement()"), ce bouton insère
+  // simplement DEUX éléments existants déjà indépendants -- un "Numéro"
+  // (lettre auto-incrémentée a, b, c...) et un nouveau type "line" (trait
+  // droit, longueur ajustable via la même poignée .builder-resize-w que
+  // texte/tableau/flèche, aucune donnée supplémentaire à sérialiser) --
+  // positionnés l'un à côté de l'autre ("a) ______"). Une fois ajoutés, ce
+  // sont deux éléments ordinaires : glissables/supprimables séparément,
+  // comme le reste du canevas.
+  function addBuilderLineWithLabel(btn) {
+    const canvas = btn.closest('.question-item').querySelector('.builder-canvas');
+    if (!canvas) return;
+    const letterCount = canvas.querySelectorAll(':scope > .builder-element[data-kind="line"]').length;
+    const letter = String.fromCharCode(97 + (letterCount % 26)) + (letterCount >= 26 ? String(Math.floor(letterCount / 26) + 1) : '');
+    const cascade = (letterCount % 6) * 16;
+    const x = 10 + cascade;
+    const y = 10 + cascade;
+    // [stated] (2026-09) : "il faut que la lettre soit associée au trait" --
+    // même data-pair-id posé sur les deux éléments (voir builderElementHTML()/
+    // startBuilderElementDrag()) pour qu'ils se déplacent ensemble ; ID
+    // unique par paire, pas juste un compteur, pour ne jamais entrer en
+    // collision avec des pairId déjà présents après un import JSON.
+    const pairId = 'pair-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+    canvas.insertAdjacentHTML('beforeend', builderElementHTML({ kind: 'number', x, y, text: letter + ')', pairId }));
+    canvas.insertAdjacentHTML('beforeend', builderElementHTML({ kind: 'line', x: x + 40, y: y + 5, width: 120, pairId }));
     resizeBuilderCanvasToFitContent(canvas);
     calculatePageBreaks();
   }
@@ -5975,8 +6076,27 @@
     e.stopPropagation();
     const canvasRenderedRect = canvas.getBoundingClientRect();
     const canvasLogicalWidth = canvas.offsetWidth;
+    // [stated] (2026-09) : "la lettre soit associée au trait" -- si cet
+    // élément partage un data-pair-id (voir builderElementHTML()/
+    // addBuilderLineWithLabel()), on retient aussi la position de départ de
+    // son ou ses partenaires dans CE canevas, pour les translater du MÊME
+    // delta pendant le glisser (voir onBuilderElementDragMove()) : ils
+    // gardent leur écart relatif, comme un groupe, tout en restant par
+    // ailleurs des éléments ordinaires indépendants (redimensionnables/
+    // supprimables séparément).
+    const pairId = el.dataset.pairId;
+    const partners = pairId
+      ? Array.from(canvas.querySelectorAll(`:scope > .builder-element[data-pair-id="${CSS.escape(pairId)}"]`))
+          .filter((other) => other !== el)
+          .map((other) => ({
+            el: other,
+            startX: parseFloat(other.style.left) || 0,
+            startY: parseFloat(other.style.top) || 0,
+            elWidth: other.offsetWidth,
+          }))
+      : [];
     builderDragState = {
-      el, canvas,
+      el, canvas, partners,
       startMouseX: e.clientX, startMouseY: e.clientY,
       startX: parseFloat(el.style.left) || 0, startY: parseFloat(el.style.top) || 0,
       zoomRatio: (canvasRenderedRect.width > 0 && canvasLogicalWidth > 0) ? (canvasRenderedRect.width / canvasLogicalWidth) : 1,
@@ -6012,7 +6132,7 @@
         builderDragState.movedPastThreshold = true;
       }
     }
-    const { el, startMouseX, startMouseY, startX, startY, zoomRatio, canvasWidth, elWidth, canvas } = builderDragState;
+    const { el, startMouseX, startMouseY, startX, startY, zoomRatio, canvasWidth, elWidth, canvas, partners } = builderDragState;
     let newX = startX + (e.clientX - startMouseX) / zoomRatio;
     let newY = startY + (e.clientY - startMouseY) / zoomRatio;
     newX = Math.max(0, Math.round(newX / BUILDER_GRID_SNAP_PX) * BUILDER_GRID_SNAP_PX);
@@ -6021,6 +6141,21 @@
     newX = Math.min(newX, Math.floor(maxX / BUILDER_GRID_SNAP_PX) * BUILDER_GRID_SNAP_PX);
     el.style.left = newX + 'px';
     el.style.top = newY + 'px';
+    // Translate le(s) partenaire(s) associé(s) (voir startBuilderElementDrag())
+    // du même delta déjà arrondi à la grille, pour garder l'écart relatif
+    // exact entre la lettre et son trait, quelle que soit lequel des deux on
+    // a saisi.
+    if (partners && partners.length) {
+      const deltaX = newX - startX;
+      const deltaY = newY - startY;
+      partners.forEach((p) => {
+        const pMaxX = Math.max(0, canvasWidth - p.elWidth);
+        const px = Math.max(0, Math.min(p.startX + deltaX, pMaxX));
+        const py = Math.max(0, p.startY + deltaY);
+        p.el.style.left = px + 'px';
+        p.el.style.top = py + 'px';
+      });
+    }
     resizeBuilderCanvasToFitContent(canvas);
   }
   // Replace le curseur d'édition au point cliqué -- appelée quand un simple
@@ -6240,6 +6375,10 @@
       y: parseFloat(el.style.top) || 0,
       width: parseFloat(el.style.width) || null,
     };
+    // Voir builderElementHTML()/addBuilderLineWithLabel() : conserve le lien
+    // "lettre associée au trait" à travers l'export/import JSON (sinon les
+    // deux éléments redeviendraient indépendants après un rechargement).
+    if (el.dataset.pairId) data.pairId = el.dataset.pairId;
     if (kind === 'text' || kind === 'number') {
       const textEl = el.querySelector('.builder-text');
       data.text = textEl ? textEl.innerText : '';
