@@ -220,9 +220,27 @@
      (sans quoi une page imprimée pourrait être coupée par une hauteur de
      grille erronée -- voir BUG ÉVITÉ ci-dessus). */
   @media print {
+    /* BUG CORRIGÉ (2026-09, [stated] : décalage d'utilisation de l'espace et
+       numéro de page mal placé sur le PDF exporté) : cette règle imposait
+       `width: var(--page-width)` (la largeur TOTALE de la feuille, 215.9mm =
+       816px) au lieu de la largeur IMPRIMABLE (100%, soit 816px - 2*15mm =
+       ~703px). Dans la fenêtre d'impression (voir doPrintExam()), #paper est
+       cloné directement dans <body> -- sans le conteneur flex .main-content
+       qui, dans la fenêtre principale, le faisait rétrécir silencieusement à
+       la bonne largeur -- donc il gardait vraiment 816px, plus large que la
+       zone imprimable. Le navigateur (Safari comme Chrome) réduisait alors
+       TOUT le document à ~86 % pour le faire tenir (polices 8.8pt au lieu de
+       10.2pt), ce qui gonflait la hauteur utile d'une page d'environ 16 % par
+       rapport à ce que calculatePageBreaks() suppose (grand vide sous chaque
+       page) et faisait tomber le numéro de page (--pn-top) bien au-dessus du
+       bas réel. Cette anomalie n'apparaissait que si « Aperçu : 2 pages côte
+       à côte » était coché au moment d'imprimer (la classe two-page-view
+       était copiée dans la fenêtre d'impression). 100% est exactement la
+       valeur déjà utilisée par la règle `.paper { width: 100% !important }`
+       de l'impression normale, plus bas. */
     body.two-page-view .paper {
       display: block !important;
-      width: var(--page-width) !important;
+      width: 100% !important;
     }
     body.two-page-view .paper-page {
       margin-bottom: 0;
@@ -235,6 +253,10 @@
     width: var(--page-width);
     min-height: var(--page-height);
     padding: var(--page-pad-x);
+    /* Bande basse réservée au numéro de page (voir .page-number-label) :
+       purement visuel, l'impression (padding: 0 3px) et la mesure de
+       pagination (padding: 15mm) forcent leur propre padding en !important. */
+    padding-bottom: calc(var(--page-pad-x) + 9mm);
     box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
     border-radius: 2px;
     margin-bottom: 30px;
@@ -400,10 +422,36 @@
      posée en JS -- voir la fin de calculatePageBreaks()) et `right: 12px`
      tels quels. Zéro changement du calcul JS lui-même : aucun risque sur
      `capacity`/PAGE_BREAK_BUFFER_PX ni sur le nombre de pages. */
+  /* BUG CORRIGÉ (2026-09, [stated] : « l'espace entre le numéro de page et
+     le bas de page ne correspond pas avec le PDF », puis « le numéro de page
+     est dans le corps de la page ») : l'ancien affichage ÉCRAN (`right: 6mm;
+     bottom: 6mm`) collait le numéro à 6mm du bord de la feuille, alors que
+     le PDF le pose à ~22mm du bord bas (15mm de marge d'impression + les
+     40px de `--pn-top`). Une première correction reprenait `--pn-top` + 15mm
+     depuis le HAUT de la feuille -- exact sur une page de hauteur standard,
+     mais À L'ÉCRAN une page GRANDIT dès que ses contrôles d'édition (.ui-only :
+     « + Ligne », « + Texte », barres de section...) occupent de la place que
+     l'impression, elle, ne compte pas : le numéro, figé à une distance fixe
+     du HAUT, se retrouvait alors au milieu du contenu. On l'ancre donc
+     maintenant depuis le BAS de la feuille, à la même distance physique que
+     dans le PDF (15mm + 29px = 15mm de marge + 40px de --pn-top - ~11px de
+     hauteur du texte) : il suit le bas de la page même quand elle grandit.
+     `padding-bottom` de .paper-page (voir plus haut) lui réserve sa propre
+     bande pour qu'aucun contenu ne passe dessous. Aucun changement du calcul
+     JS ni de `capacity` (la mesure force `padding: 15mm !important`, voir
+     .measuring-print-layout) : seul l'endroit où le numéro est PEINT à
+     l'écran change. */
   .page-number-label {
     position: absolute;
-    right: 6mm;
-    bottom: 6mm;
+    top: auto;
+    /* Voir « BUG CORRIGÉ (blancs entre les pages) » dans @media print : le
+       numéro imprimé est collé au BAS d'une boîte de page volontairement
+       courte (hauteur utile - 66px), soit 66px au-dessus de la marge basse.
+       À l'écran, le contenu commence 5mm plus bas (padding de 20mm au lieu de
+       15mm) : on descend donc le numéro d'autant (66px - ~19px = 47px) pour
+       garder le même écart avec le bas du contenu que sur le PDF. */
+    bottom: calc(15mm + 47px);
+    right: calc(15mm + 12px);
     font-size: 10px;
     color: #718096;
     font-weight: normal;
@@ -412,8 +460,8 @@
   @media print {
     .page-number-label {
       color: #4a5568;
-      top: var(--pn-top);
-      bottom: auto;
+      top: auto;
+      bottom: 0;
       right: 12px;
     }
   }
@@ -1322,6 +1370,34 @@
   .add-image-fab { right: 54px; font-size: 14px; }
   .matching-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
   .matching-table td, .matching-table th { border: 1px solid #cbd5e0; padding: 6px; text-align: left; }
+  /* Tableau d'association libre : la 1re ligne reste en gras (comme les anciens
+     <th> Terme / Lettre / Définition). */
+  .matching-table tr:first-child > td { font-weight: 700; }
+  /* Titres grisés (bouton « Ligne titre » / « Colonne titre » d'un tableau,
+     d'association ou du Question Builder) : la 1re ligne et/ou la 1re colonne.
+     print-color-adjust: exact est déjà posé globalement (voir le début du
+     <style>) : le gris s'imprime. */
+  .matching-table[data-hdr-row="1"] tr:first-child > td,
+  .builder-table[data-hdr-row="1"] tr:first-child > td,
+  .matching-table[data-hdr-col="1"] tr > td:first-child,
+  .builder-table[data-hdr-col="1"] tr > td:first-child {
+    background: #e2e8f0;
+    font-weight: 700;
+  }
+  /* Curseur ↔ au-dessus d'une séparation de colonnes (voir getColBoundaryAt()). */
+  .col-resize-hover, .col-resize-hover td, .col-resizing, .col-resizing td { cursor: col-resize !important; }
+  .col-resizing { user-select: none; -webkit-user-select: none; }
+  /* Bouton double « + Ligne | − » (voir splitBtnHTML()). */
+  .btn-split { display: inline-flex; align-items: stretch; }
+  .btn-split > .btn-action { margin: 0; }
+  .btn-split > .btn-split-add { border-radius: 4px 0 0 4px; border-right-width: 0; }
+  .btn-split > .btn-split-sub { border-radius: 0 4px 4px 0; padding: 4px 8px; font-size: 13px; line-height: 1; }
+  .q-controls > .btn-split { display: flex; width: 100%; }
+  .q-controls > .btn-split > .btn-split-add { flex: 1; text-align: left; }
+  .btn-action.btn-toggle.is-on { background: #bee3f8; border-color: #63b3ed; color: #2b6cb0; }
+  /* « + » d'ajout de question : un seul par section, au bas de son DERNIER
+     fragment (voir syncSectionAddButtons()). */
+  .add-question-fab.fab-hidden { display: none !important; }
   .essay-lines-container { margin-top: 8px; }
   .essay-line { border-bottom: 1px dashed #a0aec0; height: 26px; width: 100%; }
   .justification-box { margin-top: 8px; font-style: italic; color: #4a5568; }
@@ -1645,6 +1721,101 @@
     .image-block-drop { display: none !important; }
   }
 
+  /* ==========================================================================
+     PASTILLES DE CONTRÔLE DANS LA MARGE (2026-09, [stated] : « je veux que ces
+     pastilles n'apparaissent pas dans le corps des pages, mais dans la marge,
+     grisées, et en couleur normale au survol »).
+     Avant : « + Texte / + Lignes... », « + Ligne / - Ligne » etc. étaient DANS
+     le flux de la page. Elles ne s'impriment jamais et la mesure de pagination
+     les ignore (.measuring-print-layout .ui-only), mais à l'ÉCRAN elles
+     rallongeaient chaque question (une page pouvait passer de 1056 à ~1110px)
+     -- ce qui faisait paraître les pages plus pleines que sur le PDF et
+     collait le numéro de page dans le contenu. Désormais aucune de ces
+     barres ne prend de place : la hauteur d'une question à l'écran = sa
+     hauteur imprimée.
+     Toutes sont posées à droite du bloc qui les porte (left: 100%, donc dans
+     la marge droite de la feuille, en débordant un peu sur le fond gris
+     autour) et empilées verticalement pour rester étroites. Position
+     d'ancrage : l'élément .question-item / .section-block / etc. qui les
+     contient est déjà `position: relative`.
+     ========================================================================== */
+  .builder-toolbar,
+  .q-controls,
+  .block-toolbar {
+    position: absolute;
+    top: 0;
+    left: 100%;
+    right: auto;
+    margin: 0 0 0 8px;
+    width: max-content;
+    max-width: none;
+    overflow: visible;
+    z-index: 6;
+  }
+  /* « + Texte, + Lignes, + Numéro... » : 2 colonnes pour ne pas dépasser la
+     hauteur d'une petite question. */
+  .builder-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, max-content);
+    gap: 4px;
+    padding: 0;
+  }
+  .q-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .q-controls > .btn-action { width: 100%; text-align: left; }
+  .q-controls select { width: auto; max-width: 150px; }
+  /* Les barres de QUESTION sont dans le cadre de la section : on les décale
+     de sa bordure + son padding pour qu'elles s'alignent avec la barre de
+     section (les deux dans la même colonne de marge). */
+  .builder-toolbar, .q-controls { margin-left: 30px; }
+  /* Réglages de bloc (contour de section / de questions, style de bandeau,
+     cadre de zone de texte, taille d'image...) : même colonne. */
+  .block-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 6px 10px;
+    top: 0;
+  }
+  /* Barres attachées à UN élément du Question Builder (« + Ligne / - Colonne »
+     d'un tableau, « + Ligne » d'un bloc de lignes) : elles ne doivent pas
+     agrandir l'élément (elles décalaient le tableau imprimé de leur hauteur
+     par rapport à l'écran et gonflaient la hauteur du canevas) -> posées
+     AU-DESSUS de l'élément, sans occuper de place. */
+  .builder-lines-toolbar,
+  .builder-table-toolbar {
+    position: absolute;
+    left: 0;
+    bottom: 100%;
+    margin: 0 0 3px 0;
+    white-space: nowrap;
+    z-index: 7;
+  }
+  /* Grisées au repos, couleur normale au survol (ou au clavier). */
+  .builder-toolbar,
+  .q-controls,
+  .block-toolbar,
+  .builder-lines-toolbar,
+  .builder-table-toolbar,
+  .add-question-fab {
+    opacity: 0.35;
+    filter: grayscale(1);
+    transition: opacity 0.15s ease, filter 0.15s ease;
+  }
+  .builder-toolbar:hover, .builder-toolbar:focus-within,
+  .q-controls:hover, .q-controls:focus-within,
+  .block-toolbar:hover, .block-toolbar:focus-within,
+  .builder-lines-toolbar:hover, .builder-lines-toolbar:focus-within,
+  .builder-table-toolbar:hover, .builder-table-toolbar:focus-within,
+  .add-question-fab:hover, .add-question-fab:focus-visible {
+    opacity: 1;
+    filter: none;
+  }
+
   /* Impression et export PDF */
   @media print {
     @page {
@@ -1679,7 +1850,44 @@
          besoin de répercuter cet écart dans la mesure de pagination. */
       padding: 0 3px !important;
       margin-bottom: 0 !important;
-      min-height: auto !important;
+      /* BUG CORRIGÉ ([stated] : numéros de page absents du PDF Safari, puis
+         « une page blanche vide est ajoutée entre les pages »).
+         Étape 1 : le numéro était en position absolue à `--pn-top` (hauteur
+         utile - 40px), donc EN DESSOUS de la boîte de la page dès qu'elle
+         contient peu de contenu. Chrome le peint quand même ; Safari le rogne
+         ou le repousse en haut de la page suivante.
+         Étape 2 (tentative précédente, retirée) : une boîte de page haute de
+         (hauteur utile - 20px) + `display: flow-root` couvrait le numéro, mais
+         ne laissait que 20px de marge : dès que le moteur d'impression réel
+         dispose d'un peu moins de hauteur que le calcul (Safari), CHAQUE boîte
+         débordait sur la page suivante -> une page blanche entre chaque page.
+         Maintenant : la boîte de page est volontairement COURTE (hauteur utile -
+         66px ; `capacity` = hauteur utile - 100px, donc ~23px libres entre la
+         limite de contenu et le haut du numéro) et le numéro est collé à SON BAS
+         (`bottom: 0`, voir .page-number-label) : il est toujours DANS la boîte,
+         sous le cadre de la section, et il reste ~66px de réserve avant le bas
+         de la page -- de quoi rester sous les ~886px que Safari peut offrir
+         quand sa mise en page est plus étroite que prévu (10px de réserve).
+         `padding-top: 1px` (au lieu de `display: flow-root`) empêche la marge
+         haute du premier enfant (bandeau « CH 2 »...) de sortir de la page et
+         de décaler son numéro ; 1px de plus est absorbé par la marge de 100px. */
+      padding-top: 1px !important;
+      min-height: calc(var(--page-height) - 30mm - 66px) !important;
+      /* BUG CORRIGÉ ([stated], v1.6.2 : « overlap entre le cadre de la section et
+         le numéro de page », page 14 d'un PDF Safari) : dans Safari, la mise en
+         page d'impression n'a PAS la largeur sur laquelle calculatePageBreaks()
+         a mesuré (~702px = largeur utile) : sur le PDF fourni, Safari met en
+         page à ~661px de large puis agrandit le tout de ~6% (polices 10.84pt
+         au lieu de 10.2pt ; hauteur de page 886px au lieu de 942px). Un texte
+         plus étroit passe à plus de lignes : la page 14 dépassait donc de ~30px
+         la limite de contenu prévue et le cadre de la section recouvrait le
+         numéro de page. Safari ne rétrécit/relance sa mise en page que si un
+         élément est PLUS LARGE que sa largeur naturelle : on impose donc à la
+         page une largeur minimale = largeur utile - 1px (jamais atteinte à
+         partir de 702px sous Chrome, qui offre déjà 702px), ce qui replace
+         Safari sur la largeur mesurée (hauteur de page ~940px) : mêmes retours
+         à la ligne que la mesure, donc plus de dépassement. */
+      min-width: calc(var(--page-width) - 30mm - 1px) !important;
     }
     /* [stated] Refonte "vraies pages" : chaque .paper-page correspond
        maintenant à une vraie page RÉELLEMENT matérialisée par
@@ -1763,8 +1971,20 @@
     }
 
     .section-separator {
-      page-break-after: always !important;
-      break-after: page !important;
+      /* BUG CORRIGÉ ([stated] : « quand j'exporte en PDF, une page blanche vide
+         est ajoutée entre les pages ») : ce séparateur imposait AUSSI son propre
+         saut de page (`break-after: page`), alors que calculatePageBreaks()
+         range déjà tout ce qui le suit sur la .paper-page SUIVANTE (voir
+         `state.curPage += 1`), et que chaque .paper-page force déjà un saut de
+         page après elle-même (voir `.paper-page { break-after: page }`). Le
+         séparateur étant toujours le dernier élément de sa page, cela donnait
+         DEUX sauts de page consécutifs : Chrome les fusionne, mais Safari (WebKit)
+         les compte tous les deux et insère une page entièrement vide. Même
+         cause pour la page vide en trop quand le séparateur est le dernier bloc
+         du document. Le saut de page reste garanti par la .paper-page, il n'y a
+         plus de double saut. */
+      page-break-after: auto !important;
+      break-after: auto !important;
       /* Traité comme une unité insécable normale par calculatePageBreaks()
          (voir BUG CORRIGÉ (10)) : on garantit ici qu'il atterrit bien EN
          ENTIER sur une page, jamais coupé en deux par son ~1px de bordure. */
@@ -2084,7 +2304,7 @@
     </div>
 
     <!-- [stated] : "en bas de la colonne de gauche, ajouter les copyrights,
-         avec le favicon, et le nom Éval Studio (v1.4) et à côté :
+         avec le favicon, et le nom Éval Studio (v1.4, aujourd'hui v1.6.2 -- voir ci-dessous) et à côté :
          Copyright © 2026 Frédéric Hadi. Tous droits réservés." -- ici, le
          favicon est référencé en fichier externe (assets/favicon-32.png,
          déjà présent dans ce paquet), contrairement à l'Artifact (voir
@@ -2093,7 +2313,7 @@
     <div class="ui-only" style="display:flex; align-items:center; gap:8px; padding:12px 4px 4px 4px; margin-top:8px; border-top:1px solid #e2e8f0;">
       <img src="assets/favicon-32.png" alt="" width="24" height="24" style="border-radius:4px; flex-shrink:0;">
       <div style="line-height:1.3;">
-        <div style="font-size:12px; color:#2d3748; font-weight:600;">Éval Studio <span style="font-size:10px; color:#a0aec0; font-weight:400;">(v1.4)</span></div>
+        <div style="font-size:12px; color:#2d3748; font-weight:600;">Éval Studio <span style="font-size:10px; color:#a0aec0; font-weight:400;">(v1.6.2)</span></div>
         <div style="font-size:10px; color:#a0aec0;">Copyright © 2026 Frédéric Hadi. Tous droits réservés.</div>
       </div>
     </div>
@@ -2307,7 +2527,12 @@
     // dépend le zoom appliqué au contenu. Sans cette copie, la fenêtre
     // d'impression serait TOUJOURS revenue à la taille "Grande" par défaut,
     // quel que soit le réglage réellement choisi à l'écran.
-    doc.body.className = document.body.className;
+    // BUG CORRIGÉ : « two-page-view » est un confort d'aperçu ÉCRAN
+    // uniquement (voir le CSS de body.two-page-view) -- ne jamais le copier
+    // dans la fenêtre d'impression, sinon la mise en page d'impression
+    // hérite d'une grille à 2 colonnes et d'une largeur qui n'est plus celle
+    // sur laquelle calculatePageBreaks() a calibré la pagination.
+    doc.body.className = document.body.className.replace(/\btwo-page-view\b/g, '').replace(/\s+/g, ' ').trim();
 
     // Clonage DOM (pas une reconstruction à partir de zéro) : préserve
     // exactement le contenu RÉELLEMENT présent à l'écran -- texte édité,
@@ -3200,6 +3425,7 @@
         });
       }
 
+      syncSectionAddButtons();
       setPageCountReadout(pageCount + (pageCount > 1 ? ' pages' : ' page'));
     } catch (err) {
       console.error('calculatePageBreaks a échoué :', err);
@@ -3376,7 +3602,8 @@
     if (type) {
       e.stopPropagation();
       const ref = getNearestBlockDropRef(e.clientY);
-      insertNewBlockAt(type, ref.referenceSibling);
+      if (ref.after && ref.target) insertNewBlockAt(type, null, ref.target);
+      else insertNewBlockAt(type, ref.referenceSibling);
     }
   }
 
@@ -4554,8 +4781,7 @@
       // côté), insérée devant eux.
       const fontControlsHTML = hasFontControl ? `
           <span class="font-size-icon" title="Taille du texte" aria-hidden="true">🔤</span>
-          <button class="btn-action" title="Réduire la taille du texte" onclick="adjustModuleFontSize(${index}, -1)">−</button>
-          <button class="btn-action" title="Agrandir la taille du texte" onclick="adjustModuleFontSize(${index}, 1)">+</button>
+          <span class="btn-split"><button class="btn-action btn-split-add" title="Agrandir la taille du texte" onclick="adjustModuleFontSize(${index}, 1)">+</button><button class="btn-action btn-split-sub" title="Réduire la taille du texte" onclick="adjustModuleFontSize(${index}, -1)">−</button></span>
       ` : '';
 
       item.innerHTML = `
@@ -4701,7 +4927,8 @@
         e.stopPropagation();
         const dropWasAfter = clearDragGapAndGetSide(el, e.clientY);
         const newType = e.dataTransfer.getData('text/plain');
-        insertNewBlockAt(newType, dropWasAfter ? el.nextSibling : el);
+        if (dropWasAfter) insertNewBlockAt(newType, null, el);
+        else insertNewBlockAt(newType, el);
         return;
       }
 
@@ -4750,7 +4977,16 @@
   // position visée par le dépôt — factorisé ici car utilisé à la fois par
   // le dépôt précis sur un bloc existant (ci-dessus) et par le repli
   // "espace vide" ci-dessous (voir setupSectionsContainerDragFallback).
-  function insertNewBlockAt(newType, referenceSibling) {
+  // BUG CORRIGÉ ([stated] : « quand je dépose une section au milieu de la page,
+  // elle s'ajoute tout à la fin au lieu de là où je l'ai déposée ») : un dépôt
+  // dans la MOITIÉ BASSE d'un bloc calculait `bloc.nextSibling` AVANT la
+  // création. Or ce nextSibling vaut `null` dès que le bloc est le dernier de
+  // sa page/son conteneur -- et `null` signifie ici « tout à la fin du
+  // document ». On passe donc maintenant le bloc lui-même (`afterEl`) et
+  // l'insertion « juste après lui » se fait ICI, après la création (et le
+  // recalcul de pagination qu'elle déclenche), à partir de sa position réelle
+  // du moment. `referenceSibling` reste utilisé pour « juste avant un bloc ».
+  function insertNewBlockAt(newType, referenceSibling, afterEl = null) {
     // Les fonctions de création (addTopicBanner/addSection/etc.) ajoutent
     // TOUJOURS leur nouveau bloc dans #sections-container (page 1) -- c'est
     // le point d'ajout "maître" (voir consolidateToSinglePage() : chaque
@@ -4797,7 +5033,9 @@
     // vidé de tout sauf ce nouveau bloc par le calcul ci-dessus si le
     // document tenait déjà sur plusieurs pages). Sans référence (dépôt tout
     // en bas du document), on ajoute à la fin de la DERNIÈRE page réelle.
-    if (newEl && newEl !== referenceSibling) {
+    if (newEl && afterEl && afterEl !== newEl && afterEl.parentElement) {
+      afterEl.parentElement.insertBefore(newEl, afterEl.nextSibling);
+    } else if (newEl && newEl !== referenceSibling) {
       const targetParent = referenceSibling ? referenceSibling.parentElement : (getPageContainers().slice(-1)[0] || master);
       targetParent.insertBefore(newEl, referenceSibling);
     }
@@ -5044,7 +5282,8 @@
         clearDragGap();
         const newType = e.dataTransfer.getData('text/plain');
         const ref = getNearestBlockDropRef(e.clientY);
-        insertNewBlockAt(newType, ref.referenceSibling);
+        if (ref.after && ref.target) insertNewBlockAt(newType, null, ref.target);
+        else insertNewBlockAt(newType, ref.referenceSibling);
         return;
       }
 
@@ -5646,6 +5885,16 @@
     return type === 'SHORT' ? 'ESSAY' : type;
   }
 
+  // Bouton « + Xxx | − » : UN seul bouton double (comme demandé : « + ligne − »)
+  // plutôt que deux boutons séparés « + Xxx » et « - Xxx ». Clic sur la partie
+  // « + Xxx » = ajoute, clic sur la partie « − » = retire. Les fonctions
+  // d'ajout/retrait (adjustLines(btn, ±1), adjustMatchingCols(btn, ±1)...)
+  // sont inchangées : seul le rendu des boutons change.
+  function splitBtnHTML(label, addFn, subFn, noun, stopMouseDown) {
+    const md = stopMouseDown ? ' onmousedown="event.stopPropagation()"' : '';
+    return `<span class="btn-split"><button class="btn-action btn-split-add" title="Ajouter ${noun}"${md} onclick="${addFn}">+ ${label}</button><button class="btn-action btn-split-sub" title="Retirer ${noun}"${md} onclick="${subFn}">−</button></span>`;
+  }
+
   // Génère le HTML de la zone de réponse pour un format donné (QCM, Vrai/Faux,
   // Réponse écrite à lignes, Association) -- factorisé hors d'addQuestion()
   // pour que le rendu initial d'une question et sa reconstruction (import
@@ -5661,7 +5910,7 @@
       bodyHTML = `
         <div class="tf-options">
           <div>[ &nbsp; ] Vrai &nbsp;&nbsp;&nbsp;&nbsp; [ &nbsp; ] Faux</div>
-          <div class="ui-only" style="margin-top:5px; font-size:11px; color:#4a5568;">
+          <div class="ui-only q-controls" style="margin-top:5px; font-size:11px; color:#4a5568;">
             <label>Justification :
               <select class="tf-select" onchange="updateJustification(this)">
                 <option value="none" ${justifVal === 'none' ? 'selected' : ''}>Aucune</option>
@@ -5684,48 +5933,19 @@
       }
 
       bodyHTML = `
-        <div class="ui-only" style="margin-bottom: 5px;">
-          <button class="btn-action" onclick="adjustLines(this, 1)">+ Ligne</button>
-          <button class="btn-action" onclick="adjustLines(this, -1)">- Ligne</button>
+        <div class="ui-only q-controls" style="margin-bottom: 5px;">
+          ${splitBtnHTML('Ligne', 'adjustLines(this, 1)', 'adjustLines(this, -1)', 'une ligne')}
         </div>
         <div class="essay-lines-container">
           ${linesHTML}
         </div>`;
     } else if (type === 'MATCHING') {
-      const rawRows = (qData && qData.rows && qData.rows.length) ? qData.rows : [
-        { term: '1. Élément A', def: 'A. Définition A' },
-        { term: '2. Élément B', def: 'B. Définition B' }
-      ];
-      // [stated] (2026-09) : "pour le tableau de question d'association, il
-      // faut pouvoir ajouter des colonnes" -- réponse retenue : des groupes
-      // Terme/Définition SUPPLÉMENTAIRES (pas un tableau libre façon Question
-      // Builder), pour associer plusieurs paires terme/définition sur une
-      // même ligne. Rétrocompat : un ancien qData.rows est un tableau plat de
-      // {term,def} (1 seule paire par ligne, sans qData.colGroups) -- on le
-      // normalise ici en {pairs:[{term,def}]} pour traiter 1 ou plusieurs
-      // groupes de façon uniforme ; un ancien examen s'affiche donc à
-      // l'identique (1 groupe, aucun numéro dans l'en-tête, voir
-      // matchingHeaderCellsHTML() ci-dessous).
-      const rows = rawRows.map(r => r.pairs ? r : { pairs: [{ term: r.term || '', def: r.def || '' }] });
-      const colGroups = (qData && qData.colGroups) || (rows[0] && rows[0].pairs.length) || 1;
-
-      let rowsHTML = rows.map(r => {
-        let cells = '';
-        for (let g = 0; g < colGroups; g++) cells += matchingRowCellsHTML(r.pairs[g]);
-        return `<tr>${cells}</tr>`;
-      }).join('');
-
-      bodyHTML = `
-        <div class="ui-only" style="margin-bottom: 5px;">
-          <button class="btn-action" onclick="adjustMatchingRows(this, 1)">+ Ligne</button>
-          <button class="btn-action" onclick="adjustMatchingRows(this, -1)">- Ligne</button>
-          <button class="btn-action" onclick="adjustMatchingCols(this, 1)">+ Colonne</button>
-          <button class="btn-action" onclick="adjustMatchingCols(this, -1)">- Colonne</button>
-        </div>
-        <table class="matching-table" data-col-groups="${colGroups}">
-          <tr>${matchingHeaderCellsHTML(colGroups)}</tr>
-          ${rowsHTML}
-        </table>`;
+      bodyHTML = matchingTableHTML(
+        matchingGridFromData(qData),
+        !!(qData && qData.headerRow),
+        !!(qData && qData.headerCol),
+        qData && qData.colWidths
+      );
     }
     return bodyHTML;
   }
@@ -5776,8 +5996,7 @@
       for (let i = 0; i < lineCount; i++) linesHTML += '<div class="essay-line"></div>';
       innerHTML = `
         <div class="ui-only builder-lines-toolbar">
-          <button class="btn-action" onmousedown="event.stopPropagation()" onclick="adjustBuilderLines(this, 1)">+ Ligne</button>
-          <button class="btn-action" onmousedown="event.stopPropagation()" onclick="adjustBuilderLines(this, -1)">- Ligne</button>
+          ${splitBtnHTML('Ligne', 'adjustBuilderLines(this, 1)', 'adjustBuilderLines(this, -1)', 'une ligne', true)}
         </div>
         <div class="essay-lines-container">${linesHTML}</div>`;
       resizeHandleHTML = `<div class="builder-resize-w ui-only" title="Glisser pour ajuster la largeur" onmousedown="event.stopPropagation(); startBuilderElementResize(event, this, 'w');"></div>`;
@@ -5838,14 +6057,14 @@
       styleParts.push(`width:${width}px`);
       const rows = (elData.rows && elData.rows.length) ? elData.rows : [['', ''], ['', '']];
       const rowsHTML = rows.map(r => `<tr>${r.map(c => `<td class="editable" contenteditable="true">${escapeHtml(c)}</td>`).join('')}</tr>`).join('');
+      const bcw = colWidthsHTML(elData.colWidths && elData.colWidths.length === (rows[0] ? rows[0].length : 0) ? elData.colWidths : null);
       innerHTML = `
         <div class="ui-only builder-table-toolbar">
-          <button class="btn-action" onmousedown="event.stopPropagation()" onclick="adjustBuilderTableRows(this, 1)">+ Ligne</button>
-          <button class="btn-action" onmousedown="event.stopPropagation()" onclick="adjustBuilderTableRows(this, -1)">- Ligne</button>
-          <button class="btn-action" onmousedown="event.stopPropagation()" onclick="adjustBuilderTableCols(this, 1)">+ Colonne</button>
-          <button class="btn-action" onmousedown="event.stopPropagation()" onclick="adjustBuilderTableCols(this, -1)">- Colonne</button>
+          ${splitBtnHTML('Ligne', 'adjustBuilderTableRows(this, 1)', 'adjustBuilderTableRows(this, -1)', 'une ligne', true)}
+          ${splitBtnHTML('Colonne', 'adjustBuilderTableCols(this, 1)', 'adjustBuilderTableCols(this, -1)', 'une colonne', true)}
+          ${tableHeaderToggleButtonsHTML(!!elData.hdrRow, !!elData.hdrCol, true)}
         </div>
-        <table class="builder-table"><tbody>${rowsHTML}</tbody></table>`;
+        <table class="builder-table" data-hdr-row="${elData.hdrRow ? 1 : 0}" data-hdr-col="${elData.hdrCol ? 1 : 0}"${bcw.attrs}>${bcw.colgroup}<tbody>${rowsHTML}</tbody></table>`;
       resizeHandleHTML = `<div class="builder-resize-w ui-only" title="Glisser pour ajuster la largeur" onmousedown="event.stopPropagation(); startBuilderElementResize(event, this, 'w');"></div>`;
     } else if (kind === 'image') {
       const width = elData.width || 160;
@@ -6359,6 +6578,7 @@
     } else if (change < 0 && rows.length > 0 && rows[0].cells.length > 1) {
       rows.forEach(tr => tr.removeChild(tr.lastElementChild));
     }
+    syncTableColWidths(table);
     resizeBuilderCanvasToFitContent(canvas);
     calculatePageBreaks();
   }
@@ -6388,6 +6608,11 @@
       data.rows = Array.from(el.querySelectorAll('.builder-table tr')).map(tr =>
         Array.from(tr.querySelectorAll('td')).map(td => td.innerText)
       );
+      const tblEl = el.querySelector('.builder-table');
+      data.hdrRow = !!(tblEl && tblEl.dataset.hdrRow === '1');
+      data.hdrCol = !!(tblEl && tblEl.dataset.hdrCol === '1');
+      const cwList = readTableColWidths(tblEl);
+      if (cwList) data.colWidths = cwList;
     } else if (kind === 'image') {
       data.height = parseFloat(el.style.height) || null;
       const img = el.querySelector('.builder-image-body img');
@@ -6401,10 +6626,51 @@
     return Array.from(canvas.querySelectorAll(':scope > .builder-element')).map(serializeBuilderElement);
   }
 
+  // BUG CORRIGÉ ([stated] : « quand on ajoute une question et qu'elle passe sur
+  // la page suivante, le + reste sur la page précédente, donc la question
+  // s'ajoute juste après le + et pas à la fin de la section ») : une section
+  // qui déborde est répartie en plusieurs fragments (l'original + des
+  // « (suite) », voir getOrCreateContinuationList()). Ajouter à la .questions-list
+  // de l'ORIGINAL plaçait la nouvelle question avant toutes celles déjà
+  // reléguées sur les pages suivantes (consolidateToSinglePage() ré-attache
+  // les fragments à la suite de l'original, dans l'ordre). On ajoute donc
+  // toujours dans la liste du DERNIER fragment de la section.
+  function getSectionAppendList(sectionEl) {
+    let list = sectionEl.querySelector(':scope > .questions-list');
+    const conts = document.querySelectorAll(`[data-continuation-of="${sectionEl.id}"]`);
+    if (conts.length) {
+      const lastList = conts[conts.length - 1].querySelector(':scope > .questions-list');
+      if (lastList) list = lastList;
+    }
+    return list;
+  }
+
+  // Le « + » d'ajout de question ne doit exister qu'au bas du DERNIER fragment
+  // d'une section (là où la question ajoutée apparaîtra réellement) : on le
+  // duplique sur chaque fragment « (suite) » et on masque tous ceux qui ne
+  // sont pas le dernier. Appelée à la fin de chaque calculatePageBreaks().
+  function syncSectionAddButtons() {
+    document.querySelectorAll('.section-block').forEach((sec) => {
+      const own = sec.querySelector(':scope > .add-question-fab');
+      const fabs = [];
+      if (own) fabs.push(own);
+      document.querySelectorAll(`[data-continuation-of="${sec.id}"]`).forEach((cont) => {
+        let f = cont.querySelector(':scope > .add-question-fab');
+        if (!f && own) {
+          f = own.cloneNode(true);
+          f.classList.remove('fab-hidden');
+          cont.appendChild(f);
+        }
+        if (f) fabs.push(f);
+      });
+      fabs.forEach((f, i) => f.classList.toggle('fab-hidden', i !== fabs.length - 1));
+    });
+  }
+
   function addQuestion(secId, type, qData = null) {
     const sec = document.getElementById(secId);
     if (!sec) return;
-    const qList = sec.querySelector('.questions-list');
+    const qList = getSectionAppendList(sec);
     const qStyle = sec.dataset.qStyle || 'q-border-none';
 
     const actualType = normalizeQuestionType(type);
@@ -6466,6 +6732,7 @@
 
     reorderAllQuestions();
     recalculateTotals();
+    return qEl;
   }
 
   // [stated] (2026-09) : "il faut pouvoir faire un double de la question
@@ -6503,6 +6770,10 @@
       const matchingData = readMatchingRows(qEl);
       qData.rows = matchingData.rows;
       qData.colGroups = matchingData.colGroups;
+      qData.grid = matchingData.grid;
+      qData.headerRow = matchingData.headerRow;
+      qData.headerCol = matchingData.headerCol;
+      qData.colWidths = matchingData.colWidths;
     } else if (type === 'BUILDER') {
       const canvas = qEl.querySelector('.builder-canvas');
       if (canvas) {
@@ -6512,8 +6783,7 @@
     }
 
     const qList = qEl.parentElement;
-    addQuestion(sec.id, type, qData);
-    const newQEl = qList.lastElementChild;
+    const newQEl = addQuestion(sec.id, type, qData);
     if (newQEl && newQEl !== qEl) qList.insertBefore(newQEl, qEl.nextSibling);
     reorderAllQuestions();
     calculatePageBreaks();
@@ -6554,81 +6824,274 @@
     calculatePageBreaks();
   }
 
-  // Génère UN groupe de cellules (terme éditable + case-réponse + définition
-  // éditable) pour une ligne du tableau d'association -- factorisé pour être
-  // réutilisé identiquement par le rendu initial (buildAnswerBodyHTML),
-  // adjustMatchingRows() (nouvelle ligne = colGroups groupes vides) et
-  // adjustMatchingCols() (nouveau groupe ajouté à chaque ligne existante).
-  function matchingRowCellsHTML(pair) {
-    return `
-      <td class="editable" contenteditable="true">${escapeHtml(pair ? pair.term : '')}</td>
-      <td style="width:50px; text-align:center;">[ &nbsp; ]</td>
-      <td class="editable" contenteditable="true">${escapeHtml(pair ? pair.def : '')}</td>`;
-  }
-  // En-tête du tableau d'association : un seul groupe garde les libellés
-  // "nus" (Terme/Lettre/Définition, comme avant l'ajout des colonnes, pour ne
-  // rien changer visuellement à un examen existant) ; dès qu'il y a plus d'un
-  // groupe, chacun est numéroté pour que l'enseignant sache quel Terme va
-  // avec quelle Définition.
-  function matchingHeaderCellsHTML(colGroups) {
-    let cells = '';
-    for (let g = 0; g < colGroups; g++) {
-      const suffix = colGroups > 1 ? ` ${g + 1}` : '';
-      cells += `<th>Terme${suffix}</th><th>Lettre${suffix}</th><th>Définition${suffix}</th>`;
+  // ==========================================================================
+  // TABLEAU D'ASSOCIATION LIBRE ([stated] 2026-09 : « quand on ajoute une
+  // question d'association, je veux pouvoir modifier ce tableau »).
+  // Avant : 3 colonnes imposées (Terme/Lettre/Définition), en-têtes NON
+  // modifiables, et « + Colonne » n'ajoutait que des groupes de 3 colonnes.
+  // Maintenant : une grille de cellules toutes modifiables (en-tête compris),
+  // avec + / - Ligne et + / - Colonne colonne par colonne, comme le tableau du
+  // Question Builder, et le choix de griser la ligne / la colonne de titres.
+  // Le contenu par défaut reste celui d'avant (Terme / Lettre / Définition +
+  // 2 lignes). Pour ne rien casser, les anciens champs {rows:[{pairs}],
+  // colGroups} sont toujours relus/écrits (dérivés de la grille) : un ancien
+  // examen (.json) ou un import Excel s'ouvre tel quel, converti en grille.
+  // ==========================================================================
+  const MATCHING_BOX = '[\u00a0\u00a0]';
+
+  // Construit la grille de textes (1re ligne = titres) à partir de qData :
+  // nouvelle grille (qData.grid) OU ancien format (qData.rows en paires).
+  function matchingGridFromData(qData) {
+    if (qData && Array.isArray(qData.grid) && qData.grid.length) {
+      return qData.grid.map(r => (Array.isArray(r) ? r : []).map(c => String(c == null ? '' : c)));
     }
-    return cells;
+    const rawRows = (qData && qData.rows && qData.rows.length) ? qData.rows : [
+      { term: '1. Élément A', def: 'A. Définition A' },
+      { term: '2. Élément B', def: 'B. Définition B' }
+    ];
+    const rows = rawRows.map(r => r.pairs ? r : { pairs: [{ term: r.term || '', def: r.def || '' }] });
+    const groups = (qData && qData.colGroups) || (rows[0] && rows[0].pairs.length) || 1;
+    const header = [];
+    for (let g = 0; g < groups; g++) {
+      const suffix = groups > 1 ? ` ${g + 1}` : '';
+      header.push(`Terme${suffix}`, `Lettre${suffix}`, `Définition${suffix}`);
+    }
+    const body = rows.map(r => {
+      const cells = [];
+      for (let g = 0; g < groups; g++) {
+        const pr = r.pairs[g];
+        cells.push(pr ? pr.term : '', MATCHING_BOX, pr ? pr.def : '');
+      }
+      return cells;
+    });
+    return [header, ...body];
   }
-  // Relit l'état complet du tableau d'association directement depuis le DOM
-  // (comme serializeBuilderCanvas() pour le Question Builder) -- utilisée par
-  // duplicateQuestion(), exportSettings() et l'export Excel pour ne jamais
-  // dupliquer 3 fois la même logique de lecture des groupes Terme/Définition.
-  function readMatchingRows(qEl) {
-    const table = qEl.querySelector('.matching-table');
-    if (!table) return { rows: [], colGroups: 1 };
-    const colGroups = parseInt(table.dataset.colGroups) || 1;
-    const rows = Array.from(table.querySelectorAll('tr')).slice(1).map(tr => {
-      const tds = tr.querySelectorAll('.editable');
+
+  // ==========================================================================
+  // LARGEUR DES COLONNES d'un tableau ([stated] 2026-09 : « pouvoir changer la
+  // largeur des colonnes en tirant à droite ou à gauche les lignes de
+  // séparation entre 2 colonnes »). S'applique au tableau d'association ET au
+  // tableau du Question Builder.
+  // Modèle : `table.dataset.colWidths` = "30,45,25" (pourcentages de la largeur
+  // du tableau, somme 100) + un <colgroup> + `table-layout: fixed`. Tant que
+  // personne n'a tiré une séparation, rien de tout ça n'existe : le tableau
+  // garde sa mise en page automatique d'avant (aucun ancien examen ne change).
+  // ==========================================================================
+  const COL_RESIZE_GRAB_PX = 5;      // zone de prise, de part et d'autre du trait
+  const COL_RESIZE_MIN_PCT = 6;      // une colonne ne peut pas devenir plus étroite
+  let colResizeState = null;
+
+  function parseColWidths(str) {
+    if (!str) return null;
+    const arr = String(str).split(',').map(parseFloat);
+    return (arr.length && arr.every(n => isFinite(n) && n > 0)) ? arr : null;
+  }
+  function setTableColWidths(table, arr) {
+    const rounded = arr.map(n => Math.round(n * 10) / 10);
+    table.dataset.colWidths = rounded.join(',');
+    let cg = table.querySelector(':scope > colgroup');
+    if (!cg) {
+      cg = document.createElement('colgroup');
+      table.insertBefore(cg, table.firstChild);
+    }
+    cg.innerHTML = rounded.map(w => `<col style="width:${w}%">`).join('');
+    table.style.tableLayout = 'fixed';
+  }
+  // Après + / - Colonne : recale les largeurs mémorisées sur le nouveau nombre
+  // de colonnes (la nouvelle colonne prend une part égale, les autres se
+  // partagent le reste au prorata ; une colonne retirée rend sa part aux autres).
+  function syncTableColWidths(table) {
+    const widths = parseColWidths(table.dataset.colWidths);
+    if (!widths) return;
+    const n = table.rows[0] ? table.rows[0].cells.length : widths.length;
+    if (n === widths.length) return;
+    let next = widths.slice();
+    if (n > widths.length) {
+      while (next.length < n) {
+        const share = 100 / (next.length + 1);
+        next = next.map(w => w * (1 - share / 100)).concat(share);
+      }
+    } else {
+      next = next.slice(0, n);
+      const total = next.reduce((a, b) => a + b, 0);
+      next = next.map(w => w * 100 / total);
+    }
+    setTableColWidths(table, next);
+  }
+  function colWidthsHTML(colWidths) {
+    const w = Array.isArray(colWidths) && colWidths.length && colWidths.every(n => isFinite(n) && n > 0) ? colWidths : null;
+    if (!w) return { attrs: '', colgroup: '' };
+    return {
+      attrs: ` data-col-widths="${w.join(',')}" style="table-layout:fixed"`,
+      colgroup: `<colgroup>${w.map(n => `<col style="width:${n}%">`).join('')}</colgroup>`
+    };
+  }
+  function readTableColWidths(table) {
+    return table ? parseColWidths(table.dataset.colWidths) : null;
+  }
+
+  // La séparation visée par la souris : sur le bord droit d'une cellule (sauf la
+  // dernière colonne) ou le bord gauche d'une cellule (sauf la première).
+  function getColBoundaryAt(e) {
+    const t = e.target;
+    const td = (t && t.closest) ? t.closest('.builder-table td, .matching-table td') : null;
+    if (!td) return null;
+    const table = td.closest('table');
+    const rect = td.getBoundingClientRect();
+    const cells = td.parentElement.cells;
+    const idx = td.cellIndex;
+    if (e.clientX >= rect.right - COL_RESIZE_GRAB_PX && idx < cells.length - 1) return { table, index: idx };
+    if (e.clientX <= rect.left + COL_RESIZE_GRAB_PX && idx > 0) return { table, index: idx - 1 };
+    return null;
+  }
+  document.addEventListener('mousemove', (e) => {
+    if (colResizeState) return;
+    const hit = getColBoundaryAt(e);
+    document.querySelectorAll('.col-resize-hover').forEach(tb => { if (!hit || tb !== hit.table) tb.classList.remove('col-resize-hover'); });
+    if (hit) hit.table.classList.add('col-resize-hover');
+  }, { passive: true });
+  // Phase de CAPTURE : doit passer avant le mousedown du glisser d'un élément du
+  // Question Builder (qui, sinon, déplacerait tout le tableau) et avant le
+  // curseur d'édition d'une cellule.
+  document.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    const hit = getColBoundaryAt(e);
+    if (!hit) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const { table, index } = hit;
+    const firstRow = table.rows[0];
+    const tableW = table.offsetWidth || 1;
+    const widths = Array.from(firstRow.cells).map(c => c.offsetWidth / tableW * 100);
+    const rect = table.getBoundingClientRect();
+    colResizeState = {
+      table, index, widths,
+      startX: e.clientX,
+      zoom: (rect.width > 0 && table.offsetWidth > 0) ? rect.width / table.offsetWidth : 1
+    };
+    table.classList.add('col-resizing');
+    document.addEventListener('mousemove', onColResizeMove);
+    document.addEventListener('mouseup', onColResizeEnd);
+  }, true);
+  function onColResizeMove(e) {
+    if (!colResizeState) return;
+    const { table, index, widths, startX, zoom } = colResizeState;
+    const tableW = (table.offsetWidth || 1) * zoom;         // largeur RENDUE (comme la souris)
+    const dxPct = (e.clientX - startX) / tableW * 100;
+    const pair = widths[index] + widths[index + 1];
+    const left = Math.min(pair - COL_RESIZE_MIN_PCT, Math.max(COL_RESIZE_MIN_PCT, widths[index] + dxPct));
+    const next = widths.slice();
+    next[index] = left;
+    next[index + 1] = pair - left;
+    setTableColWidths(table, next);
+  }
+  function onColResizeEnd() {
+    if (!colResizeState) return;
+    const { table } = colResizeState;
+    colResizeState = null;
+    table.classList.remove('col-resizing');
+    document.removeEventListener('mousemove', onColResizeMove);
+    document.removeEventListener('mouseup', onColResizeEnd);
+    const canvas = table.closest('.builder-canvas');
+    if (canvas) resizeBuilderCanvasToFitContent(canvas);
+    calculatePageBreaks();
+  }
+
+  // Boutons « Ligne titre / Colonne titre » (griser la 1re ligne / colonne),
+  // partagés par le tableau d'association et le tableau du Question Builder.
+  function tableHeaderToggleButtonsHTML(hdrRow, hdrCol, stopMouseDown) {
+    const md = stopMouseDown ? ' onmousedown="event.stopPropagation()"' : '';
+    return `<button class="btn-action btn-toggle${hdrRow ? ' is-on' : ''}" title="Griser la première ligne (titres)"${md} onclick="toggleTableHeader(this, 'row')">Ligne titre</button>
+          <button class="btn-action btn-toggle${hdrCol ? ' is-on' : ''}" title="Griser la première colonne (titres)"${md} onclick="toggleTableHeader(this, 'col')">Colonne titre</button>`;
+  }
+  function toggleTableHeader(btn, which) {
+    const host = btn.closest('.builder-element') || btn.closest('.question-item');
+    const table = host ? host.querySelector('.builder-table, .matching-table') : null;
+    if (!table) return;
+    const key = which === 'col' ? 'hdrCol' : 'hdrRow';
+    const on = table.dataset[key] !== '1';
+    table.dataset[key] = on ? '1' : '0';
+    btn.classList.toggle('is-on', on);
+    const canvas = btn.closest('.builder-canvas');
+    if (canvas) resizeBuilderCanvasToFitContent(canvas);
+    calculatePageBreaks();
+  }
+
+  function matchingTableHTML(grid, hdrRow, hdrCol, colWidths) {
+    const cw = colWidthsHTML(colWidths && colWidths.length === (grid[0] ? grid[0].length : 0) ? colWidths : null);
+    const rowsHTML = grid.map(r =>
+      `<tr>${r.map(c => `<td class="editable" contenteditable="true">${escapeHtml(c)}</td>`).join('')}</tr>`
+    ).join('');
+    return `
+        <div class="ui-only q-controls" style="margin-bottom: 5px;">
+          ${splitBtnHTML('Ligne', 'adjustMatchingRows(this, 1)', 'adjustMatchingRows(this, -1)', 'une ligne')}
+          ${splitBtnHTML('Colonne', 'adjustMatchingCols(this, 1)', 'adjustMatchingCols(this, -1)', 'une colonne')}
+          ${tableHeaderToggleButtonsHTML(hdrRow, hdrCol, false)}
+        </div>
+        <table class="matching-table" data-hdr-row="${hdrRow ? 1 : 0}" data-hdr-col="${hdrCol ? 1 : 0}"${cw.attrs}>${cw.colgroup}<tbody>${rowsHTML}</tbody></table>`;
+  }
+
+  // Dérive les anciennes paires {term, def} de la grille (export Excel, champs
+  // hérités du .json) : tableau à 3n colonnes -> n groupes Terme/Lettre/Définition ;
+  // sinon une seule paire (1re colonne = terme, dernière = définition).
+  function matchingPairsFromGrid(grid) {
+    const cols = grid[0] ? grid[0].length : 0;
+    const groups = (cols >= 3 && cols % 3 === 0) ? cols / 3 : 1;
+    const rows = grid.slice(1).map(cells => {
       const pairs = [];
-      for (let g = 0; g < colGroups; g++) {
-        pairs.push({
-          term: tds[g * 2] ? tds[g * 2].innerText : '',
-          def: tds[g * 2 + 1] ? tds[g * 2 + 1].innerText : ''
-        });
+      for (let g = 0; g < groups; g++) {
+        if (groups === 1) {
+          pairs.push({ term: cells[0] || '', def: cols > 1 ? (cells[cols - 1] || '') : '' });
+        } else {
+          pairs.push({ term: cells[g * 3] || '', def: cells[g * 3 + 2] || '' });
+        }
       }
       return { pairs };
     });
-    return { rows, colGroups };
+    return { rows, colGroups: groups };
   }
 
-  // [stated] "il faut pouvoir ajouter des lignes de choix d'association pour
-  // les questions du type Association" -- même principe que + Ligne/- Ligne
-  // pour Réponse Courte/Développement (adjustLines() ci-dessus), mais sur les
-  // <tr> de .matching-table plutôt que sur des .essay-line : on ajoute/retire
-  // une ligne (autant de groupes Terme/case-réponse/Définition que
-  // data-col-groups sur la table, voir adjustMatchingCols() juste après),
-  // toujours après la ligne d'en-tête (<tr> des <th>, jamais retirée), avec un
-  // minimum d'une seule ligne de contenu.
+  // Relit l'état complet du tableau d'association directement depuis le DOM --
+  // utilisée par duplicateQuestion(), exportSettings() et l'export Excel.
+  function readMatchingRows(qEl) {
+    const table = qEl.querySelector('.matching-table');
+    if (!table) return { rows: [], colGroups: 1, grid: [], headerRow: false, headerCol: false };
+    const grid = Array.from(table.rows).map(tr => Array.from(tr.cells).map(td => td.innerText));
+    const derived = matchingPairsFromGrid(grid);
+    return {
+      rows: derived.rows,
+      colGroups: derived.colGroups,
+      grid,
+      headerRow: table.dataset.hdrRow === '1',
+      headerCol: table.dataset.hdrCol === '1',
+      colWidths: readTableColWidths(table)
+    };
+  }
+
+  function newMatchingCell(textAbove) {
+    const td = document.createElement('td');
+    td.className = 'editable';
+    td.contentEditable = 'true';
+    // Une colonne qui contient des cases-réponses « [ ] » en reçoit une aussi
+    // sur la nouvelle ligne (comme avant, quand la colonne Lettre était fixe).
+    const t = (textAbove || '').trim();
+    if (t.length >= 2 && t[0] === '[' && t[t.length - 1] === ']') td.textContent = MATCHING_BOX;
+    return td;
+  }
+
+  // + / - Ligne : jamais en dessous de 2 lignes (titres + 1 ligne).
+  // (On passe par tBodies[0] / table.rows, jamais table.lastElementChild : le
+  // parser insère un <tbody> implicite.)
   function adjustMatchingRows(btn, change) {
     const table = btn.closest('.question-item').querySelector('.matching-table');
     if (!table) return;
-    const colGroups = parseInt(table.dataset.colGroups) || 1;
-    // BUG ÉVITÉ : le HTML initial (voir plus haut) laisse le navigateur
-    // envelopper ses <tr> dans un <tbody> IMPLICITE (créé par le parser) --
-    // `table.appendChild(tr)` insérerait le nouveau <tr> comme enfant DIRECT
-    // de <table>, EN PLUS de ce <tbody>, plutôt que dedans. Résultat : une
-    // fois toutes les lignes ajoutées ainsi retirées, `table.lastElementChild`
-    // finit par désigner ce <tbody> lui-même (devenu le dernier -- ou seul --
-    // enfant direct de <table>) plutôt qu'un <tr>, et le retirer effacerait
-    // TOUTE la table (en-tête + lignes d'origine) d'un coup. On passe donc
-    // explicitement par `table.tBodies[0]` pour ajouter, et par la collection
-    // `.rows` (qui retrouve la vraie dernière ligne quel que soit son
-    // conteneur direct) pour retirer -- jamais `lastElementChild`.
+    const tbody = table.tBodies[0] || table;
     if (change > 0) {
+      const last = table.rows[table.rows.length - 1];
+      const colCount = table.rows[0] ? table.rows[0].cells.length : 3;
       const tr = document.createElement('tr');
-      let cells = '';
-      for (let g = 0; g < colGroups; g++) cells += matchingRowCellsHTML(null);
-      tr.innerHTML = cells;
-      (table.tBodies[0] || table).appendChild(tr);
+      for (let i = 0; i < colCount; i++) tr.appendChild(newMatchingCell(last && last.cells[i] ? last.cells[i].innerText : ''));
+      tbody.appendChild(tr);
     } else if (change < 0 && table.rows.length > 2) {
       const lastRow = table.rows[table.rows.length - 1];
       lastRow.parentNode.removeChild(lastRow);
@@ -6636,34 +7099,17 @@
     calculatePageBreaks();
   }
 
-  // [stated] (2026-09) : "pour le tableau de question d'association, il faut
-  // pouvoir ajouter des colonnes" -- ajoute/retire un GROUPE Terme/Lettre/
-  // Définition ENTIER (3 cellules) sur l'en-tête ET sur chaque ligne
-  // existante, jamais une colonne isolée : le mécanisme d'association
-  // (case-réponse vide entre les deux) a toujours besoin de ses deux bornes
-  // Terme+Définition ensemble. Minimum 1 groupe. `table.dataset.colGroups`
-  // est la source de vérité relue par matchingRowCellsHTML()/
-  // adjustMatchingRows()/readMatchingRows() -- toujours mise à jour ici en
-  // dernier, une fois le DOM effectivement modifié.
+  // + / - Colonne : UNE colonne à la fois (avant : un groupe de 3). Minimum 1.
   function adjustMatchingCols(btn, change) {
     const table = btn.closest('.question-item').querySelector('.matching-table');
     if (!table) return;
-    const colGroups = parseInt(table.dataset.colGroups) || 1;
-    const headerRow = table.rows[0];
-    const dataRows = Array.from(table.rows).slice(1);
+    const rows = Array.from(table.rows);
     if (change > 0) {
-      const newColGroups = colGroups + 1;
-      headerRow.innerHTML = matchingHeaderCellsHTML(newColGroups);
-      dataRows.forEach(tr => tr.insertAdjacentHTML('beforeend', matchingRowCellsHTML(null)));
-      table.dataset.colGroups = newColGroups;
-    } else if (change < 0 && colGroups > 1) {
-      const newColGroups = colGroups - 1;
-      headerRow.innerHTML = matchingHeaderCellsHTML(newColGroups);
-      dataRows.forEach(tr => {
-        for (let i = 0; i < 3; i++) if (tr.lastElementChild) tr.removeChild(tr.lastElementChild);
-      });
-      table.dataset.colGroups = newColGroups;
+      rows.forEach(tr => tr.appendChild(newMatchingCell('')));
+    } else if (change < 0 && rows.length && rows[0].cells.length > 1) {
+      rows.forEach(tr => tr.removeChild(tr.lastElementChild));
     }
+    syncTableColWidths(table);
     calculatePageBreaks();
   }
 
@@ -6700,7 +7146,7 @@
   function addImageItem(secId, existingDataUrl = null, existingCaption = '') {
     const sec = document.getElementById(secId);
     if (!sec) return;
-    const qList = sec.querySelector('.questions-list');
+    const qList = getSectionAppendList(sec);
     imageItemCounter++;
     const itemId = `imgitem-${imageItemCounter}`;
 
@@ -7279,6 +7725,10 @@
             const matchingData = readMatchingRows(q);
             qData.rows = matchingData.rows;
             qData.colGroups = matchingData.colGroups;
+            qData.grid = matchingData.grid;
+            qData.headerRow = matchingData.headerRow;
+            qData.headerCol = matchingData.headerCol;
+            qData.colWidths = matchingData.colWidths;
           } else if (type === 'BUILDER') {
             // Question Builder (2026-09) : chaque élément du canevas
             // (position, taille, contenu) est resérialisé tel quel -- voir
